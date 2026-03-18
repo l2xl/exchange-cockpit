@@ -23,12 +23,14 @@ namespace scratcher::bybit {
 
 // WebSocket ByBit API market data payload structure
 // Example: {"topic":"publicTrade.BTCUSDC","ts":1761520812165,"type":"snapshot","data":[...]}
+// T is the data field type directly (use std::deque<X> for array payloads, or a struct for single-object payloads)
 template<typename T>
 struct WsApiPayload {
     std::string topic;                 // Topic name (e.g., "publicTrade.BTCUSDC")
     uint64_t ts{0};                    // Timestamp (ms) when system generates the data
     std::string type;                  // Data type ("snapshot" or "delta")
-    std::deque<T> data;               // Array of data objects
+    T data;                            // Payload data (array or single object depending on T)
+    uint64_t cts{0};                   // Cross-server timestamp (ms), present in some payloads
 };
 
 struct RetExtInfo

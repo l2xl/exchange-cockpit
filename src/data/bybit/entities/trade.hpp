@@ -31,8 +31,8 @@ struct Trade {
     std::string orderQty;                       // Order qty
     std::optional<std::string> leavesQty;       // The remaining qty not executed
     std::optional<std::string> createType;      // Order create type
-    std::string orderType;                      // Order type. "Market", "Limit"
-    std::optional<std::string> stopOrderType;   // Stop order type
+    OrderType orderType;                         // Order type. Market, Limit
+    std::optional<StopOrderType> stopOrderType;  // Stop order type
     std::string execFee;                        // Executed trading fee
     std::optional<std::string> execFeeV2;       // Spot leg transaction fee, only works for execType=FutureSpread
     std::string execId;                         // Execution ID

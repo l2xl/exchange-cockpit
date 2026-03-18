@@ -64,16 +64,17 @@ namespace scratcher {
 // };
 
 namespace {
-    size_t parse_presision_decimals(std::string_view str)
+    size_t parse_presision_decimals(std::string_view s)
     {
-        if (str.empty()) throw std::invalid_argument("empty currency string");
-        size_t res = 0;
-        if (auto point_pos = str.find('.'); point_pos != std::string_view::npos) {
-            if (point_pos == str.length() - 1 || str.find('.', point_pos + 1) != std::string_view::npos) throw std::invalid_argument("invalid currency format: " + std::string(str));
-
-            return str.length() - point_pos - 1;
+        if (s.empty()) throw std::invalid_argument("empty currency string");
+        //auto s = str;
+        if (s.front() == '-') s.remove_prefix(1);
+        if (s.empty()) throw std::invalid_argument("empty currency string");
+        if (auto point_pos = s.find('.'); point_pos != std::string_view::npos) {
+            if (point_pos == s.length() - 1 || s.find('.', point_pos + 1) != std::string_view::npos) throw std::invalid_argument("invalid currency format: " + std::string(s));
+            return s.length() - point_pos - 1;
         }
-        return res;
+        return 0;
     }
 }
 
@@ -81,11 +82,13 @@ template<std::integral T/*, std::derived_from<fixed_point_spec> SPEC*/>
 class currency
 {
     static constexpr T MAX_PARSE = std::numeric_limits<T>::max()/10;
-    const size_t m_decimals;
-    const T m_multiplier;
+    size_t m_decimals;
+    T m_multiplier;
     T m_value;
 
 public:
+    constexpr currency() : m_decimals(0), m_multiplier(1), m_value(0) {}
+
     template <std::integral I>
     constexpr currency(I val, size_t decimals)
         : m_decimals(decimals), m_multiplier(std::pow(10, decimals)), m_value(static_cast<T>(val)) {}
@@ -97,15 +100,12 @@ public:
     { parse(str); }
 
     currency(const currency& c) = default;
-    //currency(currency&& c) noexcept = default;
 
-    currency& operator=(const currency& c)
-    {
-        if (m_multiplier != c.m_multiplier) throw std::invalid_argument("inconsistent multiplier");
-        m_value = c.m_value;
-        return *this;
-    }
-    //currency& operator=(currency&& c) noexcept = default;
+    currency& operator=(const currency& c) = default;
+
+    currency operator-() const { return currency(-m_value, m_decimals); }
+
+    currency& negate() { m_value = -m_value; return *this; }
 
     template <std::integral I>
     void set_raw(I raw)
@@ -145,10 +145,12 @@ public:
 
     std::string to_string() const
     {
-        std::string res = std::to_string(m_value);
+        bool negative = m_value < 0;
+        T abs_val = negative ? -m_value : m_value;
+        std::string res = std::to_string(abs_val);
         while (res.length() < m_decimals + 1) res.insert(res.begin(), '0');
         res.insert(res.end() - m_decimals, '.');
-
+        if (negative) res.insert(res.begin(), '-');
         return res;
     }
 
@@ -156,13 +158,18 @@ public:
     {
         static const std::string delims = ".,' ";
         bool is_decimal = false;
+        bool negative = false;
         size_t decimals = 0;
         T value = 0;
-        for (auto c: str) {
+
+        auto it = str.begin();
+        if (it != str.end() && *it == '-') { negative = true; ++it; }
+
+        for (; it != str.end(); ++it) {
+            auto c = *it;
             if (delims.find(c) != std::string::npos) {
                 if (is_decimal) throw std::invalid_argument(std::string(str));
                 if (c == '.') is_decimal = true;
-
                 continue;
             }
             if (decimals > m_decimals && c != '0') throw std::overflow_error("decimals length: " + std::string(str));
@@ -184,7 +191,7 @@ public:
         else if (decimals > m_decimals)
             value /= std::pow(10, decimals - m_decimals);
 
-        m_value = value;
+        m_value = negative ? -value : value;
         return *this;
     }
 

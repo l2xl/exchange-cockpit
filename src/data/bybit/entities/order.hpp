@@ -31,7 +31,7 @@ struct Order {
     OrderSide side;                             // Side (Buy/Sell)
     std::optional<std::string> isLeverage;      // Whether to borrow. Unified spot only. "0": false, "1": true
     std::optional<int> positionIdx;             // Position index. Used to identify positions in different position modes
-    std::string orderStatus;                    // Order status
+    OrderStatus orderStatus;                    // Order status
     std::optional<std::string> createType;      // Order create type (only for category=linear or inverse)
     std::optional<std::string> cancelType;      // Cancel type
     std::optional<std::string> rejectReason;    // Reject reason
@@ -41,9 +41,9 @@ struct Order {
     std::string cumExecQty;                     // Cumulative executed order qty
     std::optional<std::string> cumExecValue;    // Cumulative executed order value
     std::optional<std::string> cumExecFee;      // Cumulative executed trading fee
-    std::string timeInForce;                    // Time in force
-    std::string orderType;                      // Order type. "Market", "Limit"
-    std::optional<std::string> stopOrderType;   // Stop order type
+    TimeInForce timeInForce;                    // Time in force
+    OrderType orderType;                        // Order type. Market, Limit
+    std::optional<StopOrderType> stopOrderType; // Stop order type
     std::optional<std::string> orderIv;         // Implied volatility
     std::optional<std::string> marketUnit;      // The unit for qty when create Spot market orders for UTA account
     std::optional<std::string> slippageToleranceType; // Spot and Futures market order slippage tolerance type
@@ -58,7 +58,7 @@ struct Order {
     std::optional<std::string> tpTriggerBy;     // The price type to trigger take profit
     std::optional<std::string> slTriggerBy;     // The price type to trigger stop loss
     std::optional<int> triggerDirection;        // Trigger direction. 1: rise, 2: fall
-    std::optional<std::string> triggerBy;       // The price type of trigger price
+    std::optional<TriggerBy> triggerBy;          // The price type of trigger price
     std::optional<std::string> lastPriceOnCreated; // Last price when place the order
     std::optional<std::string> basePrice;       // Last price when place the order, Spot has this field only
     std::optional<bool> reduceOnly;             // Reduce only. true means reduce position size
@@ -73,6 +73,23 @@ struct Order {
 };
 
 
+
+struct OrderRequest {
+    Category category;
+    std::string symbol;
+    OrderSide side;
+    OrderType orderType;
+    std::string qty;
+    std::optional<std::string> price;
+    std::optional<TimeInForce> timeInForce;
+    std::optional<std::string> triggerPrice;
+    std::optional<std::string> takeProfit;
+    std::optional<std::string> stopLoss;
+    std::optional<std::string> tpLimitPrice;
+    std::optional<std::string> slLimitPrice;
+    std::optional<std::string> orderLinkId;
+    std::optional<bool> reduceOnly;
+};
 
 } // namespace scratcher::bybit
 

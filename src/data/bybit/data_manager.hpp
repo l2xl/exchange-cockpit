@@ -4,7 +4,7 @@
 // -----BEGIN PGP PUBLIC KEY BLOCK-----
 //
 // mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
-// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b21tYWlsLmNvbT6IkAQTFggA
 // OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
 // AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
 // 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
@@ -16,134 +16,104 @@
 
 #include <string>
 #include <memory>
-#include <list>
-#include <unordered_map>
-#include <ranges>
-#include <concepts>
-#include <iostream>
-#include <boost/asio/detail/socket_option.hpp>
-
-#include <boost/system/system_error.hpp>
+#include <functional>
 #include <boost/container/flat_map.hpp>
 
 #include "data_controller.hpp"
-#include "currency.hpp"
+#include "orderbook.hpp"
 #include "scheduler.hpp"
 #include "bybit/entities/response.hpp"
 #include "bybit/entities/instrument.hpp"
 #include "bybit/entities/public_trade.hpp"
+#include "bybit/entities/order.hpp"
+#include "bybit/entities/trade.hpp"
+#include "bybit/entities/wallet.hpp"
 #include "connection_context.hpp"
 #include "http_query.hpp"
 #include "websocket.hpp"
 #include "datahub/data_provider.hpp"
-
-class Config;
+#include "exchange_config.hpp"
 
 namespace scratcher {
-
-class Scratcher;
-
 namespace bybit {
 
-// class ByBitDataProvider: public IDataProvider, public std::enable_shared_from_this<ByBitDataProvider>
-// {
-//     friend class ByBitDataManager;
-//
-//     std::optional<InstrumentInfo> m_instrument;
-//
-//     pubtrade_cache_t m_pubtrade_cache;
-//
-//     boost::container::flat_map<uint64_t, uint64_t> m_order_book_bids;
-//     boost::container::flat_map<uint64_t, uint64_t> m_order_book_asks;
-//
-//     void SetInstrument(InstrumentInfo&& instrument)
-//     { m_instrument = std::move(instrument); }
-//
-//     struct EnsurePrivate {};
-// public:
-//     ByBitDataProvider(EnsurePrivate) {}
-//
-//     static std::shared_ptr<ByBitDataProvider> Create();
-//
-//     std::optional<std::string> Symbol() const override
-//     { return m_instrument ? m_instrument->symbol : std::optional<std::string>(); }
-//
-//     currency<uint64_t> PricePoint() const override
-//     { return /*m_instrument_metadata ? m_instrument_metadata->price_point :*/ currency<uint64_t>(1, 2); }
-//
-//     std::string GetInstrumentMetadata() const override;
-//
-//     bool IsReadyHandleData() const override
-//     { return m_instrument.has_value(); }
-//
-//     const pubtrade_cache_t& PublicTradeCache() const override
-//     { return m_pubtrade_cache; }
-//
-//     const boost::container::flat_map<uint64_t, uint64_t>& Bids() const override
-//     { return m_order_book_bids; }
-//
-//     const boost::container::flat_map<uint64_t, uint64_t>& Asks() const override
-//     { return m_order_book_asks; }
-//
-// };
+using scratcher::subscription_id;
 
-class ByBitDataManager: public IDataController, public std::enable_shared_from_this<ByBitDataManager>
+class ByBitDataManager : public IDataController, public std::enable_shared_from_this<ByBitDataManager>
 {
 public:
-    using instrument_provider_type = datahub::data_provider<InstrumentInfo, &InstrumentInfo::symbol>;
+    using instrument_provider_type = datahub::data_sink<datahub::data_model<InstrumentInfo, &InstrumentInfo::symbol>>;
+    using pubtrade_provider_type   = datahub::data_sink<datahub::data_model<PublicTrade, &PublicTrade::execId>>;
+    using orderbook_provider_type  = datahub::data_sink<OrderBook>;
+    using order_provider_type      = datahub::data_sink<datahub::data_model<Order, &Order::orderId>>;
+    using trade_provider_type      = datahub::data_sink<datahub::data_model<Trade, &Trade::execId>>;
 
 private:
     static const std::string BYBIT;
 
-    // Core dependencies
-    std::shared_ptr<connect::context> m_context;
-    std::shared_ptr<SQLite::Database> m_db;
-    std::shared_ptr<Config> m_config;
+    std::shared_ptr<connect::context>          m_context;
+    std::shared_ptr<SQLite::Database>          m_db;
+    std::shared_ptr<IExchangeConfig>             m_config;
+
+    std::shared_ptr<instrument_provider_type>  m_instrument_provider;
+    std::shared_ptr<connect::http_query>       m_instruments_query;
+    std::shared_ptr<pubtrade_provider_type>    m_pubtrade_provider;
+    std::shared_ptr<orderbook_provider_type>   m_orderbook_provider;
+    std::shared_ptr<order_provider_type>       m_order_provider;
+    std::shared_ptr<trade_provider_type>       m_trade_provider;
 
     std::shared_ptr<connect::websock_connection> m_public_stream;
+    std::shared_ptr<connect::websock_connection> m_private_stream;
 
-    std::shared_ptr<instrument_provider_type> m_instrument_provider;
-    std::shared_ptr<connect::http_query> m_instruments_query;
+    size_t m_next_sub_id = 1;
 
-    //std::unordered_map<std::string, std::shared_ptr<ByBitDataProvider>> m_instrument_data;
+    using instrument_handler = std::function<void(const std::deque<InstrumentInfo>&)>;
+    using trade_handler = std::function<void(const std::deque<PublicTrade>&)>;
+    using orderbook_handler = std::function<void(const std::vector<OrderBookLevel>&)>;
 
-    std::list<std::function<void(const std::string&, SourceType)>> m_instrument_handlers;
-    std::list<std::function<void(const std::string&, SourceType)>> m_trade_handlers;
-    std::list<std::function<void(const std::string&, SourceType)>> m_orderbook_handlers;
+    boost::container::flat_map<subscription_id, instrument_handler> m_instrument_handlers;
+    boost::container::flat_map<std::string, boost::container::flat_map<subscription_id, trade_handler>> m_trade_subs;
+    boost::container::flat_map<std::string, boost::container::flat_map<subscription_id, orderbook_handler>> m_orderbook_subs;
 
-    void HandleInstrumentsData(const std::deque<InstrumentInfo>& instruments);
+    // symbol -> subscription_id reverse lookup (for unsubscribe)
+    boost::container::flat_map<subscription_id, std::string> m_trade_sub_symbol;
+    boost::container::flat_map<subscription_id, std::string> m_orderbook_sub_symbol;
 
     void SetupInstrumentDataSource();
+    void SetupPublicDataSource();
+    void SetupPrivateDataSource();
 
     struct ensure_private {};
 public:
-    ByBitDataManager(std::shared_ptr<scheduler> scheduler,
-                     std::shared_ptr<Config> config,
-                     std::shared_ptr<SQLite::Database> db,
-                     ensure_private);
-    ~ByBitDataManager() = default;
+    ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::shared_ptr<IExchangeConfig> config, std::shared_ptr<SQLite::Database> db, ensure_private);
+    ~ByBitDataManager() override = default;
 
-    static std::shared_ptr<ByBitDataManager> Create(std::shared_ptr<scheduler> scheduler,
-                                                    std::shared_ptr<Config> config,
-                                                    std::shared_ptr<SQLite::Database> db);
+    static std::shared_ptr<ByBitDataManager> Create(std::shared_ptr<scheduler> scheduler, std::shared_ptr<IExchangeConfig> config, std::shared_ptr<SQLite::Database> db);
 
-    const std::string& Name() const override
-    { return BYBIT; }
+    const std::string& Name() const override { return BYBIT; }
 
     void HandleError(std::exception_ptr eptr);
 
-    // Per-symbol handlers
-    //void AddInsctrumentDataHandler(std::function<void(const std::string&, SourceType)> h) override;
+    subscription_id SubscribeInstrumentList(std::function<void(const std::deque<InstrumentInfo>&)> handler) override;
+    void UnsubscribeInstrumentList(subscription_id id) override;
 
-    // void AddNewTradeHandler(std::function<void(const std::string&, SourceType)> h)
-    // { m_trade_handlers.emplace_back(std::move(h)); }
-    //
-    // void AddOrderBookUpdateHandler(std::function<void(const std::string&, SourceType)> h)
-    // { m_orderbook_handlers.emplace_back(std::move(h)); }
-    //
-    // Subscribe to full instrument list updates
-    void SubscribeInstrumentList(std::function<void(const std::deque<InstrumentInfo>&)> handler) override
-    { m_instrument_provider->subscribe(std::move(handler)); }
+    subscription_id SubscribePublicTrades(std::string symbol, std::function<void(const std::deque<PublicTrade>&)> handler) override;
+    void UnsubscribePublicTrades(subscription_id id) override;
+
+    subscription_id SubscribeOrderBook(std::string symbol, std::function<void(const std::vector<OrderBookLevel>&)> handler) override;
+    void UnsubscribeOrderBook(subscription_id id) override;
+
+    void SubscribeOrders(std::function<void(const std::deque<Order>&)> handler) override
+    { m_order_provider->subscribe(std::move(handler)); }
+
+    void SubscribeTrades(std::function<void(const std::deque<Trade>&)> handler) override
+    { m_trade_provider->subscribe(std::move(handler)); }
+
+    void SubscribeWallet(std::function<void(const WalletBalance&)> handler) override
+    { /* TODO: WalletBalance contains nested deque<CoinBalance>, not yet supported by data_model */ }
+
+    void PlaceOrder(OrderRequest request, std::function<void(std::string orderId)> callback) override;
+    void CancelOrder(const std::string& orderId, const std::string& symbol) override;
 };
 
 } // scratcher::bybit

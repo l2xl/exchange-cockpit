@@ -109,7 +109,10 @@ endif()
 
 set(core_SOURCES
         src/common/generic_handler.hpp
+        src/common/exchange_config.hpp
         src/common/currency.hpp
+        src/common/hex.cpp
+        src/common/hex.hpp
         src/common/timedef.hpp
         src/common/data_rectangle.hpp
         src/core/scheduler.cpp
@@ -123,11 +126,15 @@ set(core_SOURCES
         src/data/entities/common.cpp
         src/data/entities/instrument.hpp
         src/data/entities/trade.hpp
+        src/data/entities/orderbook_level.hpp
         # DEPRECATED: src/data/bybit/stream.cpp - replaced by websock_connection + data_sink
         # DEPRECATED: src/data/bybit/stream.hpp - replaced by websock_connection + data_sink
         src/data/bybit/data_manager.cpp
         src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
+        src/data/orderbook.hpp
+        src/data/bybit/entities/orderbookdata.hpp
+        src/data/bybit/entities/wallet.hpp
         # DEPRECATED: src/data/bybit/subscription.hpp - absorbed into data_sink pattern
         src/connect/connection_context.hpp
         src/connect/connection_context.cpp
@@ -142,6 +149,8 @@ set(core_SOURCES
         src/datahub/metadata.hpp
         src/datahub/data_sink.hpp
         src/datahub/data_provider.hpp
+        src/common/hex.hpp
+        src/common/hex.cpp
 )
 
 add_library(core STATIC ${core_SOURCES})
@@ -188,6 +197,8 @@ add_executable(elscratcher
             src/app/elements/tab_bar.cpp
             src/app/elements/panel_node.hpp
             src/app/elements/panel_node.cpp
+            src/app/elements/panels/panel_content.hpp
+            src/app/elements/panels/panel_content.cpp
             src/cockpit/trade_cockpit.hpp
             src/cockpit/trade_cockpit.cpp
             src/config.hpp
@@ -268,6 +279,8 @@ if(NOT ANDROID)
     add_test(test_websocket test/connect/test_websocket.cpp)
     add_test(test_data_sink test/datahub/test_data_sink.cpp)
     add_test(test_data_model test/bybit/test_data_model.cpp)
+    add_test(test_data_manager test/bybit/test_data_manager.cpp)
+    add_test(test_orderbook test/bybit/test_orderbook.cpp)
 
 endif()
 

@@ -79,11 +79,9 @@ TEST_CASE("data_sink with make_data_acceptor - first write", "[datahub][http]")
     size_t initial_count = trades_cache.size();
 
     // Create data sink with make_data_acceptor for collecting results
-    auto sink = make_data_sink<bybit::PublicTrade>(
-        fixture.dao->data_acceptor<std::deque<bybit::PublicTrade>>(),
-        make_data_acceptor(trades_cache),
-        [](const std::exception_ptr&) {}
-    );
+    auto sink = make_data_sink( fixture.dao, [](const std::exception_ptr&) {} );
+
+    sink->subscribe([&trades_cache](auto&& entities){ std::ranges::move(entities, std::back_inserter(trades_cache)); });
 
     REQUIRE(sink != nullptr);
 
@@ -113,11 +111,9 @@ TEST_CASE("data_sink with make_data_acceptor - second write filters duplicates",
 
     REQUIRE(initial_count == 60);
 
-    auto sink = make_data_sink<bybit::PublicTrade>(
-        fixture.dao->data_acceptor<std::deque<bybit::PublicTrade>>(),
-        make_data_acceptor(trades_cache),
-        [](const std::exception_ptr&) {}
-    );
+    auto sink = make_data_sink( fixture.dao, [](const std::exception_ptr&) {} );
+
+    sink->subscribe([&trades_cache](auto&& entities){ std::ranges::move(entities, std::back_inserter(trades_cache)); });
 
     auto entity_acceptor = sink->data_acceptor<std::deque<bybit::PublicTrade>>();
 
@@ -145,17 +141,15 @@ TEST_CASE("data_sink with websocket and http data", "[datahub][http][websocket]"
 
     REQUIRE(initial_count == 120);
 
-    auto sink = make_data_sink<bybit::PublicTrade>(
-        fixture.dao->data_acceptor<std::deque<bybit::PublicTrade>>(),
-        make_data_acceptor(trades_cache),
-        [](const std::exception_ptr&) {}
-    );
+    auto sink = make_data_sink( fixture.dao, [](const std::exception_ptr&) {} );
+
+    sink->subscribe([&trades_cache](auto&& entities){ std::ranges::move(entities, std::back_inserter(trades_cache)); });
 
     auto trades_acceptor = sink->data_acceptor<std::deque<bybit::PublicTrade>>();
     auto wstrades_acceptor = sink->data_acceptor<std::deque<bybit::WsPublicTrade>>();
 
     // WebSocket adapter
-    auto ws_adapter = make_data_adapter<bybit::WsApiPayload<bybit::WsPublicTrade>>(
+    auto ws_adapter = make_data_adapter<bybit::WsApiPayload<std::deque<bybit::WsPublicTrade>>>(
         [=](auto&& ws_payload) { wstrades_acceptor(std::move(ws_payload.data)); }
     );
     auto ws_dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), ws_adapter);

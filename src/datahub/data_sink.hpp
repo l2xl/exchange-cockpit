@@ -18,6 +18,7 @@
 #include <exception>
 #include <concepts>
 #include <ranges>
+#include <iostream>
 #include <deque>
 #include <boost/lockfree/spsc_queue.hpp>
 
@@ -28,28 +29,31 @@ namespace datahub {
 
 using scratcher::generic_handler;
 
-template<typename D, typename H>
+template<typename D, typename H, typename Pred = std::nullptr_t>
 class data_adapter
 {
 public:
     using data_type = D;
     using handler_type = H;
+    using pred_type = Pred;
 
 private:
     handler_type m_handler;
+    [[no_unique_address]] pred_type m_pred;
 
 public:
-    explicit data_adapter(handler_type&& h) : m_handler(std::forward<H>(h))
+    explicit data_adapter(handler_type&& h, pred_type pred = {}) : m_handler(std::forward<H>(h)), m_pred(std::move(pred))
     {}
 
     bool operator()(const std::string& json_data) {
         std::clog << "Try JSON: " << json_data << std::endl;
         try {
-            // Use error_on_unknown_keys = false to handle API evolution gracefully
-            // External APIs may add new fields that we don't need to store
             data_type result{};
             auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(result, json_data);
             if (!err) {
+                if constexpr (!std::is_same_v<pred_type, std::nullptr_t>) {
+                    if (!m_pred(result)) return false;
+                }
                 m_handler(std::move(result));
                 return true;
             }
@@ -60,7 +64,6 @@ public:
         }
         catch (...) {
             std::cerr << "Unknown exception while parsing json for type '" << typeid(data_type).name() << "'" << std::endl;
-            // Parsing failed, this acceptor cannot handle this data
         }
         return false;
     }
@@ -69,6 +72,10 @@ public:
 template <typename D, typename H>
 data_adapter<D, H> make_data_adapter(H&& h)
 { return data_adapter<D, H>(std::forward<H>(h)); }
+
+template <typename D, typename H, typename Pred>
+data_adapter<D, H, Pred> make_data_adapter(H&& h, Pred&& pred)
+{ return data_adapter<D, H, Pred>(std::forward<H>(h), std::forward<Pred>(pred)); }
 
 template<typename... Acceptor>
 class data_dispatcher
@@ -145,130 +152,87 @@ template<typename... Acceptor>
 data_dispatcher<Acceptor...> make_data_dispatcher(boost::asio::any_io_executor executor, Acceptor&& ... acceptors)
 { return data_dispatcher<Acceptor...>(std::move(executor), std::forward<Acceptor>(acceptors)...); }
 
-/**
- * @brief DataSink template providing data flow management with optional filtering
- *
- * Uses generic_handler pattern for data/error handling (same as http_query).
- * Template parameters:
- * - Entity: The data entity type
- * - DataFilter: Optional filter callable (e.g., from data_model::data_acceptor())
- */
-template<typename Entity, typename DataFilter = std::nullptr_t>
-class data_sink : public std::enable_shared_from_this<data_sink<Entity, DataFilter>>
+template<typename Model>
+class data_sink : public std::enable_shared_from_this<data_sink<Model>>
 {
 public:
-    using entity_type = Entity;
-    using data_filter_type = DataFilter;
+    using model_type = Model;
+    using entity_type = typename Model::entity_type;
+    using cache_type = typename Model::cache_type;
+    using subscription_handler = std::function<void(const cache_type&)>;
 
 private:
-    [[no_unique_address]] data_filter_type m_data_filter;
+    std::shared_ptr<model_type> m_model;
+    // std::shared_ptr<sink_type> m_sink;
+    std::list<subscription_handler> m_subscribers;
 
 public:
-    explicit data_sink(data_filter_type filter)
-        : m_data_filter(std::move(filter))
-    { }
+    data_sink(std::shared_ptr<model_type> model)
+        : m_model(std::move(model))
+    {}
     virtual ~data_sink() = default;
 
-    /**
-     * @brief Factory function to create DataSink with generic callable handlers
-     * @tparam DataCallable Callable accepting std::deque<entity_type>&&
-     * @tparam ErrorCallable Callable accepting std::exception_ptr
-     * @param filter Optional filter (e.g., data_model::data_acceptor() for persistence)
-     * @param data_callback Handler for processed entity data
-     * @param error_callback Handler for errors
-     */
-    template<typename DataCallable, typename ErrorCallable>
-    static std::shared_ptr<data_sink> create(
-        data_filter_type filter,
-        DataCallable&& data_callback,
-        ErrorCallable&& error_callback)
+    template<typename ErrorCallable>
+    static std::shared_ptr<data_sink> create(std::shared_ptr<model_type> model, ErrorCallable&& error_hdl)
     {
-        return std::static_pointer_cast<data_sink>(
-            std::make_shared<generic_handler<
-                std::deque<entity_type>&&,
-                data_sink,
-                DataCallable,
-                ErrorCallable,
-                data_filter_type>>(
-                    std::forward<DataCallable>(data_callback),
-                    std::forward<ErrorCallable>(error_callback),
-                    std::move(filter)));
+
+        auto self = std::make_shared<scratcher::error_handler<data_sink, ErrorCallable, std::shared_ptr<model_type>>>(
+            std::forward<ErrorCallable>(error_hdl), std::move(model));
+
+        return std::static_pointer_cast<data_sink>(self);
     }
 
-    template <std::ranges::input_range Range>
+    std::shared_ptr<model_type> model() const
+    { return m_model; }
+
+    template<std::ranges::input_range Range>
     requires std::convertible_to<std::ranges::range_value_t<Range>, entity_type>
-    auto data_acceptor() {
-        std::weak_ptr<data_sink> ref = this->shared_from_this();
-        return [=](Range&& entities) {
+    auto data_acceptor()
+    {
+        std::weak_ptr<data_sink<model_type>> ref = data_sink<model_type>::weak_from_this();
+        return [ref](Range&& entities) {
             if (auto self = ref.lock()) {
-                self->template process_entities<Range>(std::forward<Range>(entities));
+                auto new_entities = self->m_model-> template data_acceptor<Range, cache_type>()(std::forward<Range>(entities));
+                std::ranges::for_each(self->m_subscribers, [&new_entities](const auto& h) { h(new_entities); });
             }
         };
     }
 
-    virtual void handle_data(std::deque<entity_type>&& data) = 0;
-    virtual void handle_error(std::exception_ptr eptr) = 0;
-
-private:
-    template <std::ranges::input_range Range>
+    // Callable-based acceptor: fn(shared_ptr<model>, Range&&) -> cache_type.
+    // fn is responsible for mutating the model and returning the changed entities for subscriber notification.
+    template<std::ranges::input_range Range, typename Callable>
     requires std::convertible_to<std::ranges::range_value_t<Range>, entity_type>
-    void process_entities(Range&& entities)
+    auto data_acceptor(Callable&& fn)
     {
-        try {
-            std::deque<entity_type> new_entities;
-
-            if constexpr (std::is_same_v<data_filter_type, std::nullptr_t>) {
-                for (const auto& entity : entities) {
-                    new_entities.emplace_back(static_cast<entity_type>(entity));
-                }
-            } else {
-                std::deque<entity_type> input;
-                for (const auto& entity : entities) {
-                    input.emplace_back(static_cast<entity_type>(entity));
-                }
-                new_entities = m_data_filter(std::move(input));
+        std::weak_ptr<data_sink<model_type>> ref = data_sink<model_type>::weak_from_this();
+        return [ref, fn = std::forward<Callable>(fn)](Range&& entities) {
+            if (auto self = ref.lock()) {
+                auto new_entities = fn(self->m_model, std::forward<Range>(entities));
+                std::ranges::for_each(self->m_subscribers, [&new_entities](const auto& h) { h(new_entities); });
             }
-
-            if (!new_entities.empty()) {
-                handle_data(std::move(new_entities));
-            }
-        }
-        catch (const std::exception&) {
-            handle_error(std::current_exception());
-        }
+        };
     }
+
+    void subscribe(subscription_handler handler)
+    { m_subscribers.emplace_back(std::move(handler)); }
+
+    //virtual void handle_data(cache_type&& data) = 0;
+    virtual void handle_error(std::exception_ptr eptr) = 0;
 };
 
-// Factory with filter (e.g., data_model::data_acceptor() for persistence)
-template<typename Entity, typename DataFilter, typename DataCallable, typename ErrorCallable>
-auto make_data_sink(DataFilter&& data_filter, DataCallable&& data_callback, ErrorCallable&& error_callback)
+template<typename Model, typename ErrorCallable>
+auto make_data_sink(std::shared_ptr<Model> model, ErrorCallable&& error_handler)
 {
-    return data_sink<Entity, std::decay_t<DataFilter>>::create(
-        std::forward<DataFilter>(data_filter),
-        std::forward<DataCallable>(data_callback),
-        std::forward<ErrorCallable>(error_callback));
+    return data_sink<Model>::create(std::move(model), std::forward<ErrorCallable>(error_handler));
 }
 
-// Factory without filter (pass-through mode)
-template<typename Entity, typename DataCallable, typename ErrorCallable>
-auto make_data_sink(DataCallable&& data_callback, ErrorCallable&& error_callback)
+template<typename Entity, auto PrimaryKey, typename ErrorCallable>
+auto make_data_sink(std::shared_ptr<SQLite::Database> db, ErrorCallable&& error_handler)
 {
-    return data_sink<Entity, std::nullptr_t>::create(
-        nullptr,
-        std::forward<DataCallable>(data_callback),
-        std::forward<ErrorCallable>(error_callback));
+    auto model = data_model<Entity, PrimaryKey>::create(std::move(db));
+    return make_data_sink(std::move(model), std::forward<ErrorCallable>(error_handler));
 }
 
-template<typename Container>
-requires std::output_iterator<std::back_insert_iterator<Container>, std::ranges::range_value_t<Container>>
-auto make_data_acceptor(Container& data_cache)
-{
-    return [&data_cache]<std::ranges::input_range Range>(Range&& entities)
-        requires std::convertible_to<std::ranges::range_value_t<Range>, std::ranges::range_value_t<Container>>
-    {
-        std::ranges::move(entities, std::back_inserter(data_cache));
-    };
-}
 
 } // namespace datahub
 

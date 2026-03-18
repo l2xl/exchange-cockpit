@@ -54,26 +54,27 @@ static DataModelTestFixture fixture;
 
 TEST_CASE("Write first", "[bybit][instruments]")
 {
-    auto dao = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db);
+    auto model = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db);
 
     // Container to collect results
-    std::deque<bybit::InstrumentInfo> cache = dao->query();
+    std::deque<bybit::InstrumentInfo> cache = model->query();
 
-    auto sink = make_data_sink<bybit::InstrumentInfo>(
-        dao->data_acceptor<std::deque<bybit::InstrumentInfo>>(),
-        make_data_acceptor(cache),
-        [](const std::exception_ptr&) {}
-    );
+    auto sink = make_data_sink(model, [](const std::exception_ptr&) {});
 
     REQUIRE(sink != nullptr);
 
-    auto entity_acceptor = sink->data_acceptor<std::deque<bybit::InstrumentInfoAPI>>();
+    sink->subscribe([&cache](const std::deque<bybit::InstrumentInfo>& entities) {
+        std::ranges::copy(entities, std::back_inserter(cache));
+    });
+
+    auto entity_acceptor = sink->data_acceptor<std::deque<bybit::InstrumentInfo>>();
 
     auto resp_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::InstrumentInfoAPI>>>(
             [entity_acceptor](auto&& resp) mutable {
-                std::cout << "Adapter: Processing response with " << resp.result.list.size()
-                          << " instruments" << std::endl;
-                entity_acceptor(std::move(resp.result.list));
+                std::cout << "Adapter: Processing response with " << resp.result.list.size() << " instruments" << std::endl;
+                std::deque<bybit::InstrumentInfo> converted;
+                for (const auto& item : resp.result.list) { converted.emplace_back(item); }
+                entity_acceptor(std::move(converted));
             }
         );
     auto dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), resp_adapter);

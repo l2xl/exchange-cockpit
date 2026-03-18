@@ -48,6 +48,50 @@ enum class OrderSide {
     Sell
 };
 
+enum class OrderStatus {
+    New,
+    PartiallyFilled,
+    Untriggered,
+    Rejected,
+    PartiallyFilledCanceled,
+    Filled,
+    Cancelled,
+    Triggered,
+    Deactivated
+};
+
+enum class OrderType {
+    Market,
+    Limit
+};
+
+enum class StopOrderType {
+    TakeProfit,
+    StopLoss,
+    TrailingStop,
+    Stop,
+    PartialTakeProfit,
+    PartialStopLoss
+};
+
+enum class TimeInForce {
+    GTC,
+    IOC,
+    FOK,
+    PostOnly
+};
+
+enum class TriggerBy {
+    LastPrice,
+    IndexPrice,
+    MarkPrice
+};
+
+enum class AccountType {
+    UNIFIED,
+    CONTRACT
+};
+
 } // namespace scratcher::bybit
 
 template <>
@@ -93,6 +137,74 @@ struct glz::meta<scratcher::bybit::ExecType> {
         "Settle", Settle,
         "BlockTrade", BlockTrade,
         "MovePosition", MovePosition
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::OrderStatus> {
+    using enum scratcher::bybit::OrderStatus;
+    static constexpr auto value = enumerate(
+        "New", New,
+        "PartiallyFilled", PartiallyFilled,
+        "Untriggered", Untriggered,
+        "Rejected", Rejected,
+        "PartiallyFilledCanceled", PartiallyFilledCanceled,
+        "Filled", Filled,
+        "Cancelled", Cancelled,
+        "Triggered", Triggered,
+        "Deactivated", Deactivated
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::OrderType> {
+    using enum scratcher::bybit::OrderType;
+    static constexpr auto value = enumerate(
+        "Market", Market,
+        "Limit", Limit
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::StopOrderType> {
+    using enum scratcher::bybit::StopOrderType;
+    static constexpr auto value = enumerate(
+        "TakeProfit", TakeProfit,
+        "StopLoss", StopLoss,
+        "TrailingStop", TrailingStop,
+        "Stop", Stop,
+        "PartialTakeProfit", PartialTakeProfit,
+        "PartialStopLoss", PartialStopLoss
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::TimeInForce> {
+    using enum scratcher::bybit::TimeInForce;
+    static constexpr auto value = enumerate(
+        "GTC", GTC,
+        "IOC", IOC,
+        "FOK", FOK,
+        "PostOnly", PostOnly
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::TriggerBy> {
+    using enum scratcher::bybit::TriggerBy;
+    static constexpr auto value = enumerate(
+        "LastPrice", LastPrice,
+        "IndexPrice", IndexPrice,
+        "MarkPrice", MarkPrice
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::AccountType> {
+    using enum scratcher::bybit::AccountType;
+    static constexpr auto value = enumerate(
+        "UNIFIED", UNIFIED,
+        "CONTRACT", CONTRACT
     );
 };
 

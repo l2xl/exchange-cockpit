@@ -40,8 +40,9 @@ template<typename Entity, auto PrimaryKey>
 class data_model : public std::enable_shared_from_this<data_model<Entity, PrimaryKey> >
 {
 public:
-    typedef Entity entity_type;
-    typedef EntityMetadata<entity_type, PrimaryKey> metadata_type;
+    using entity_type = Entity;
+    using cache_type = std::deque<entity_type>;
+    using metadata_type = EntityMetadata<entity_type, PrimaryKey>;
 private:
     std::shared_ptr<SQLite::Database> m_db;
     metadata_type m_metadata;
@@ -119,12 +120,12 @@ public:
         return count_op(std::forward<Args>(args)...);
     }
 
-    template <std::ranges::input_range Range>
+    template <std::ranges::input_range Range, typename Container>
     requires std::convertible_to<std::ranges::range_value_t<Range>, Entity>
     auto data_acceptor() {
         std::weak_ptr<data_model> ref = this->shared_from_this();
-        return [=](Range&& entities)->std::deque<Entity> {
-            std::deque<Entity> new_entities;
+        return [=](Range&& entities)->Container {
+            Container new_entities;
             if (auto self = ref.lock()) {
                 for (auto&& entity : std::forward<Range>(entities)) {
                     if (self->insert_or_replace(entity))
