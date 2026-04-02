@@ -48,7 +48,8 @@ public:
             data_type result{};
             auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(result, json_data);
             if (!err) {
-                return m_handler(std::move(result));
+                m_handler(std::move(result));
+                return true;
             }
             std::clog << "Failed to read json data for type '" << typeid(data_type).name() << "':\n"
                           << "  Error: " << glz::format_error(err, json_data) << std::endl;
@@ -79,7 +80,7 @@ private:
 
 public:
     explicit data_dispatcher(boost::asio::any_io_executor executor, Acceptor&&... acceptors)
-        : m_data_queue(std::make_shared<queue_type>(16))
+        : m_data_queue(std::make_shared<queue_type>(1024))
         , m_acceptors(std::make_shared<acceptor_tuple_type>(std::forward<Acceptor>(acceptors)...))
         , m_dispatch_strand(boost::asio::make_strand(std::move(executor)))
     { }
@@ -147,20 +148,23 @@ public:
     using entity_type = typename Model::entity_type;
     using cache_type = typename Model::cache_type;
 
+    struct EnsurePrivate {};
+
 private:
     std::shared_ptr<model_type> m_model;
 
 public:
-    data_sink(std::shared_ptr<model_type> model)
+    data_sink(std::shared_ptr<model_type> model, EnsurePrivate)
         : m_model(std::move(model))
-    {}
+    { }
+
     virtual ~data_sink() = default;
 
     template<typename DataCallable, typename ErrorCallable>
     static std::shared_ptr<data_sink> create(std::shared_ptr<model_type> model, DataCallable&& data_handler, ErrorCallable&& error_hdl)
     {
-        auto self = std::make_shared<generic_handler<cache_type&&, data_sink, DataCallable, ErrorCallable, std::shared_ptr<model_type>>>(
-            std::forward<DataCallable>(data_handler), std::forward<ErrorCallable>(error_hdl), std::move(model));
+        auto self = std::make_shared<generic_handler<cache_type&&, data_sink, DataCallable, ErrorCallable, std::shared_ptr<model_type>, EnsurePrivate>>(
+            std::forward<DataCallable>(data_handler), std::forward<ErrorCallable>(error_hdl), std::move(model), EnsurePrivate{});
 
         return std::static_pointer_cast<data_sink>(self);
     }
@@ -170,30 +174,23 @@ public:
 
     template<std::ranges::input_range Range>
     requires std::convertible_to<std::ranges::range_value_t<Range>, entity_type>
-    void operator()(Range&& data)
-    { accept(std::forward<Range>(data)); }
-
-    template<std::ranges::input_range Range>
-    requires std::convertible_to<std::ranges::range_value_t<Range>, entity_type>
     void accept(Range&& data)
     {
-        auto result = m_model-> template accept<Range, cache_type>(std::forward<Range>(data));
-        if (!result.empty()) handle_data(std::move(result));
+        cache_type cache(std::ranges::begin(data), std::ranges::end(data));
+        handle_data(cache_type(cache));
+        m_model->accept(std::move(cache));
     }
 
-    // Returns lambda: (Range&&) -> cache_type of new/changed entities
     template<std::ranges::input_range Range>
     requires std::convertible_to<std::ranges::range_value_t<Range>, entity_type>
     auto data_acceptor()
     {
         std::weak_ptr<data_sink> ref = data_sink::weak_from_this();
-//        auto model_acceptor = m_model->template data_acceptor<Range, cache_type>();
         return [=](Range&& entities) {
             if (auto self = ref.lock())
                 self->template accept<Range>(std::forward<Range>(entities));
         };
     }
-
 
     virtual void handle_data(cache_type&& data) = 0;
     virtual void handle_error(std::exception_ptr eptr) = 0;
@@ -204,15 +201,6 @@ auto make_data_sink(std::shared_ptr<Model> model, Acceptor&& data_acceptor, Erro
 {
     return data_sink<Model>::create(std::move(model), std::forward<Acceptor>(data_acceptor), std::forward<ErrorCallable>(error_handler));
 }
-
-/// Deprecated!
-template<typename Entity, auto PrimaryKey, typename Acceptor, typename ErrorCallable>
-auto make_data_sink(std::shared_ptr<SQLite::Database> db, Acceptor&& data_acceptor, ErrorCallable&& error_handler)
-{
-    auto model = data_model<Entity, PrimaryKey>::create(std::move(db));
-    return make_data_sink(std::move(model), std::forward<Acceptor>(data_acceptor), std::forward<ErrorCallable>(error_handler));
-}
-
 
 } // namespace datahub
 

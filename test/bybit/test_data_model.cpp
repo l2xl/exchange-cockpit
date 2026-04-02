@@ -54,7 +54,7 @@ static DataModelTestFixture fixture;
 
 TEST_CASE("Create model with suffix", "[bybit][instruments]")
 {
-    auto model = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db, "bybit");
+    auto model = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db, boost::asio::make_strand(fixture.scheduler->io().get_executor()), "bybit");
 
     CHECK(model->name().ends_with("bybit"));
 
@@ -66,18 +66,16 @@ TEST_CASE("Create model with suffix", "[bybit][instruments]")
 
 TEST_CASE("Write first", "[bybit][instruments]")
 {
-    auto model = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db);
+    auto model = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db, boost::asio::make_strand(fixture.scheduler->io().get_executor()));
 
     // Container to collect results
     std::deque<bybit::InstrumentInfo> cache = model->query();
 
-    auto sink = make_data_sink(model, [](const std::exception_ptr&) {});
+    auto sink = make_data_sink(model, [&cache](const std::deque<bybit::InstrumentInfo>& entities) {
+        std::ranges::copy(entities, std::back_inserter(cache));
+    }, [](const std::exception_ptr&) {});
 
     REQUIRE(sink != nullptr);
-
-    sink->subscribe([&cache](const std::deque<bybit::InstrumentInfo>& entities) {
-        std::ranges::copy(entities, std::back_inserter(cache));
-    });
 
     auto entity_acceptor = sink->data_acceptor<std::deque<bybit::InstrumentInfo>>();
 

@@ -106,6 +106,7 @@ ByBitDataManager::ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::sh
     : m_context(connect::context::create(scheduler->io()))
     , m_db(std::move(db))
     , m_config(std::move(config))
+    , m_db_strand(boost::asio::make_strand(m_context->io().get_executor()))
     , m_instrument_feed(instrument_feed_type::create())
     , m_private_order_feed(private_order_feed_type::create())
     , m_private_trade_feed(private_trade_feed_type::create())
@@ -118,9 +119,14 @@ std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<sched
 
     auto error_cb = [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); };
 
-    self->m_instrument_sink = datahub::make_data_sink<InstrumentInfo, &InstrumentInfo::symbol>(self->m_db, self->m_instrument_feed->data_acceptor<std::deque<InstrumentInfo>>(), error_cb);
-    self->m_private_order_sink = datahub::make_data_sink<Order, &Order::orderId>(self->m_db, self->m_private_order_feed->data_acceptor<std::deque<Order>>(), error_cb);
-    self->m_private_trade_sink = datahub::make_data_sink<Trade, &Trade::execId>(self->m_db, self->m_private_trade_feed->data_acceptor<std::deque<Trade>>(), error_cb);
+    auto instrument_model = datahub::data_model<InstrumentInfo, &InstrumentInfo::symbol>::create(self->m_db, self->m_db_strand, {});
+    self->m_instrument_sink = datahub::make_data_sink(std::move(instrument_model), self->m_instrument_feed->data_acceptor<std::deque<InstrumentInfo>>(), error_cb);
+
+    auto order_model = datahub::data_model<Order, &Order::orderId>::create(self->m_db, self->m_db_strand, {});
+    self->m_private_order_sink = datahub::make_data_sink(std::move(order_model), self->m_private_order_feed->data_acceptor<std::deque<Order>>(), error_cb);
+
+    auto trade_model = datahub::data_model<Trade, &Trade::execId>::create(self->m_db, self->m_db_strand, {});
+    self->m_private_trade_sink = datahub::make_data_sink(std::move(trade_model), self->m_private_trade_feed->data_acceptor<std::deque<Trade>>(), error_cb);
 
     self->SetupInstrumentDataSource();
     self->SetupPublicDataSource();
@@ -149,7 +155,6 @@ void ByBitDataManager::SetupInstrumentDataSource()
         [data_sink = std::move(data_sink)](ApiResponse<ListResult<InstrumentInfoAPI>>&& response) mutable {
             std::clog << "Received " << response.result.list.size() << " instruments from server" << std::endl;
             data_sink(std::move(response.result.list));
-            return true;
         }
     );
 
@@ -179,13 +184,11 @@ void ByBitDataManager::SetupPublicDataSource()
                         auto symbol = extract_symbol(payload.topic);
                         if (auto it = self->m_pubdata_accept.find(symbol); it != self->m_pubdata_accept.end()) {
                             auto& [ob_sink, ob_feed, pt_sink, pt_feed] = it->second;
-                            if (pt_sink) {
-                                pt_sink->accept(payload.data);
-                                return true;
-                            }
+                            if (!pt_sink) throw std::runtime_error("No public trade sink for " + symbol);
+
+                            pt_sink->accept(payload.data);
                         }
                     }
-                    return false;
                 }),
 
             datahub::make_data_adapter<WsApiPayload<OrderBookData>>(
@@ -194,20 +197,21 @@ void ByBitDataManager::SetupPublicDataSource()
                         auto symbol = extract_symbol(payload.topic);
                         if (auto it = self->m_pubdata_accept.find(symbol); it != self->m_pubdata_accept.end()) {
                             auto& [ob_sink, ob_feed, pt_sink, pt_feed] = it->second;
-                            if (ob_sink) {
-                                for (auto& ask : payload.data.a)
-                                    ask.size = -ask.size;
+                            if (!ob_sink) throw std::runtime_error("No orderbook sink for " + symbol);
 
-                                if (payload.type == "snapshot")
-                                    ob_sink->accept(std::vector<OrderBookLevel>{});
+                            if (payload.type == "snapshot")
+                                ob_sink->accept(std::vector<OrderBookLevel>{});
 
-                                if (!payload.data.b.empty()) ob_sink->accept(std::move(payload.data.b));
-                                if (!payload.data.a.empty()) ob_sink->accept(std::move(payload.data.a));
-                                return true;
-                            }
+                            // Build single asc-sorted update: bids reversed (low→high) then asks (low→high)
+                            // Bid prices < ask prices is an exchange invariant, so concatenation is sorted
+                            std::vector<OrderBookLevel> update;
+                            update.reserve(payload.data.b.size() + payload.data.a.size());
+                            std::ranges::copy(std::views::reverse(payload.data.b), std::back_inserter(update));
+                            std::ranges::transform(payload.data.a, std::back_inserter(update),
+                                [](OrderBookLevel level) { level.size = -level.size; return level; });
+                            ob_sink->accept(std::move(update));
                         }
                     }
-                    return false;
                 })),
 
                 error_cb);
@@ -231,9 +235,9 @@ void ByBitDataManager::SetupPrivateDataSource()
         "wss://" + m_config->StreamHost() + ":" + m_config->StreamPort() + STREAM_PRIVATE,
         datahub::make_data_dispatcher(m_context->io().get_executor(),
             datahub::make_data_adapter<WsApiPayload<std::deque<Order>>>([order_acceptor = std::move(order_acceptor)](WsApiPayload<std::deque<Order>>&& payload) mutable
-                { order_acceptor(std::move(payload.data)); return true; }),
+                { order_acceptor(std::move(payload.data));}),
             datahub::make_data_adapter<WsApiPayload<std::deque<Trade>>>([trade_acceptor = std::move(trade_acceptor)](WsApiPayload<std::deque<Trade>>&& payload) mutable
-                { trade_acceptor(std::move(payload.data)); return true; })),
+                { trade_acceptor(std::move(payload.data));})),
         error_cb);
 
     (*m_private_stream)(ws_auth_message(m_config->ApiKey(), m_config->ApiSecret()));
@@ -244,13 +248,13 @@ void ByBitDataManager::SetupPrivateDataSource()
 
 // ─── IDataController subscriptions ───────────────────────────────────────────
 
-void ByBitDataManager::SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<InstrumentInfo>> sub)
+void ByBitDataManager::SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<std::deque<InstrumentInfo>>> sub)
 {
     m_instrument_feed->subscribe(std::move(sub));
     (*m_instruments_query)();
 }
 
-void ByBitDataManager::SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<OrderBookLevel>> ob_sub, std::weak_ptr<datahub::data_subscription<PublicTrade>> pt_sub)
+void ByBitDataManager::SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<std::deque<OrderBookLevel>>> ob_sub, std::weak_ptr<datahub::data_subscription<std::deque<PublicTrade>>> pt_sub)
 {
     auto& [ob_sink, ob_feed, pt_sink, pt_feed] = m_pubdata_accept[symbol];
     auto ref = weak_from_this();
@@ -258,26 +262,29 @@ void ByBitDataManager::SubscribeInstrument(std::string symbol, std::weak_ptr<dat
 
     if (!ob_feed) {
         ob_feed = orderbook_feed_type::create();
-        ob_sink = datahub::make_data_sink(OrderBook::Create(), ob_feed->template data_acceptor<std::vector<OrderBookLevel>>(), error_cb);
+        ob_sink = datahub::make_data_sink(
+            OrderBook::Create(ob_feed->template data_acceptor<std::vector<OrderBookLevel>>()),
+            [](orderbook_sink_type::cache_type&&) {},
+            error_cb);
         (*m_public_stream)(subscribe_message("orderbook.50." + symbol));
     }
     ob_feed->subscribe(std::move(ob_sub));
 
     if (!pt_feed) {
         pt_feed = pubtrade_feed_type::create();
-        auto model = datahub::data_model<PublicTrade, &PublicTrade::execId>::create(m_db, "_" + symbol);
+        auto model = datahub::data_model<PublicTrade, &PublicTrade::execId>::create(m_db, m_db_strand, "_" + symbol);
         pt_sink = datahub::make_data_sink(std::move(model), pt_feed->data_acceptor<std::deque<PublicTrade>>(), std::move(error_cb));
         (*m_public_stream)(subscribe_message("publicTrade." + symbol));
     }
     pt_feed->subscribe(std::move(pt_sub));
 }
 
-void ByBitDataManager::SubscribeOrders(std::weak_ptr<datahub::data_subscription<Order>> sub)
+void ByBitDataManager::SubscribeOrders(std::weak_ptr<datahub::data_subscription<std::deque<Order>>> sub)
 {
     m_private_order_feed->subscribe(std::move(sub));
 }
 
-void ByBitDataManager::SubscribeTrades(std::weak_ptr<datahub::data_subscription<Trade>> sub)
+void ByBitDataManager::SubscribeTrades(std::weak_ptr<datahub::data_subscription<std::deque<Trade>>> sub)
 {
     m_private_trade_feed->subscribe(std::move(sub));
 }

@@ -20,6 +20,7 @@
 #include <memory>
 
 #include "datahub/data_subscription.hpp"
+#include "datahub/data_feed.hpp"
 #include "orderbook.hpp"
 #include "bybit/entities/instrument.hpp"
 #include "bybit/entities/public_trade.hpp"
@@ -36,10 +37,12 @@ struct IDataController
     virtual ~IDataController() = default;
     virtual const std::string& Name() const = 0;
 
-    virtual void SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<bybit::InstrumentInfo>> sub) = 0;
-    virtual void SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<OrderBookLevel>> ob_sub, std::weak_ptr<datahub::data_subscription<bybit::PublicTrade>> pt_sub) = 0;
-    virtual void SubscribeOrders(std::weak_ptr<datahub::data_subscription<bybit::Order>> sub) = 0;
-    virtual void SubscribeTrades(std::weak_ptr<datahub::data_subscription<bybit::Trade>> sub) = 0;
+    virtual void SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<std::deque<bybit::InstrumentInfo>>> sub) = 0;
+    virtual void SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<std::deque<OrderBookLevel>>> ob_sub, std::weak_ptr<datahub::data_subscription<std::deque<bybit::PublicTrade>>> pt_sub) = 0;
+    virtual void SubscribeOrders(std::weak_ptr<datahub::data_subscription<std::deque<bybit::Order>>> sub) = 0;
+    virtual void SubscribeTrades(std::weak_ptr<datahub::data_subscription<std::deque<bybit::Trade>>> sub) = 0;
+
+    virtual const datahub::keyed_snapshot_data_feed<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>& getInstrumentsFeed() const = 0;
 
     virtual void PlaceOrder(bybit::OrderRequest request, std::function<void(std::string orderId)> callback) = 0;
     virtual void CancelOrder(const std::string& orderId, const std::string& symbol) = 0;

@@ -16,6 +16,9 @@
 
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <glaze/glaze.hpp>
+#include <boost/asio/any_io_executor.hpp>
+#include <boost/asio/strand.hpp>
+#include <boost/asio/post.hpp>
 #include <memory>
 #include <algorithm>
 #include <concepts>
@@ -43,29 +46,33 @@ public:
     using entity_type = Entity;
     using cache_type = std::deque<entity_type>;
     using metadata_type = EntityMetadata<entity_type, PrimaryKey>;
+    using strand_type = boost::asio::strand<boost::asio::any_io_executor>;
+
 private:
     std::shared_ptr<SQLite::Database> m_db;
     metadata_type m_metadata;
+    strand_type m_db_strand;
 
     struct EnsurePrivate {};
 public:
-    // RAII constructor - automatically creates metadata from Entity type using Glaze reflection
-    // Table is created synchronously during construction (RAII guarantee)
-    explicit data_model(std::shared_ptr<SQLite::Database> db, std::string table_suffix, EnsurePrivate)
+    explicit data_model(std::shared_ptr<SQLite::Database> db, strand_type strand, std::string table_suffix, EnsurePrivate)
         : m_db(std::move(db))
         , m_metadata(metadata_type::Create(std::move(table_suffix)))
+        , m_db_strand(std::move(strand))
     {
         if (!m_db) {
             throw std::invalid_argument("Database connection cannot be null");
         }
+        m_db->exec("PRAGMA journal_mode=WAL");
+        m_db->exec("PRAGMA synchronous=NORMAL");
         if (!m_db->tableExists(name())) {
             std::string sql = sql::create_table(m_metadata.table_name, m_metadata.column_definitions);
             m_db->exec(sql);
         }
     }
 
-    static std::shared_ptr<data_model> create(std::shared_ptr<SQLite::Database> db, std::string table_suffix = {})
-    { return std::make_shared<data_model>(std::move(db), std::move(table_suffix), EnsurePrivate{}); }
+    static std::shared_ptr<data_model> create(std::shared_ptr<SQLite::Database> db, strand_type strand, std::string table_suffix = {})
+    { return std::make_shared<data_model>(std::move(db), std::move(strand), std::move(table_suffix), EnsurePrivate{}); }
 
     const std::string& name() const
     { return m_metadata.table_name; }
@@ -88,21 +95,18 @@ public:
         return insert_or_replace_op(static_cast<const Entity&>(entity));
     }
 
-    // Variadic template query method - primary interface for conditional queries
     template<typename... Args>
     std::deque<Entity> query(const QueryCondition &condition = {}, Args&&... args) {
         Query<data_model> query_op(this->shared_from_this(), condition);
         return query_op(std::forward<Args>(args)...);
     }
 
-    // Update method - updates entity by primary key
     template<std::convertible_to<Entity> T>
     void update(const T &entity) {
         Update<data_model> update_op(this->shared_from_this());
         update_op(static_cast<const Entity&>(entity));
     }
 
-    // Variadic template remove method - primary interface for delete operations
     template<typename... Args>
     void remove(const QueryCondition &condition = {}, Args&&... args) {
         if (condition.empty()) {
@@ -112,34 +116,38 @@ public:
         delete_op(std::forward<Args>(args)...);
     }
 
-    // Variadic template count method - primary interface for conditional counts
     template<typename... Args>
     size_t count(const QueryCondition &condition = {}, Args&&... args) {
         Count<data_model> count_op(this->shared_from_this(), condition);
         return count_op(std::forward<Args>(args)...);
     }
 
-    template <std::ranges::input_range Range, typename Container>
+    template <std::ranges::input_range Range, typename Container = cache_type>
     requires std::convertible_to<std::ranges::range_value_t<Range>, Entity>
     Container accept(Range&& entities)
     {
         Container new_entities;
+        InsertOrReplace<data_model> op(this->shared_from_this());
         for (auto&& entity : std::forward<Range>(entities)) {
-            if (insert_or_replace(entity))
+            if (op(static_cast<const Entity&>(entity)))
                 new_entities.emplace_back(std::forward<decltype(entity)>(entity));
         }
         return new_entities;
-
     }
 
     template <std::ranges::input_range Range, typename Container>
     requires std::convertible_to<std::ranges::range_value_t<Range>, Entity>
-    auto data_acceptor() {
-        std::weak_ptr<data_model> ref = this->shared_from_this();
-        return [=](Range&& entities)->Container {
-            if (auto self = ref.lock())
-                return self->accept(std::forward<Range>(entities));
-            return {};
+    std::function<void(Range&&)> data_acceptor()
+    {
+        std::weak_ptr<data_model> ref = this->weak_from_this();
+        return [ref](Range&& entities) {
+            auto data = Container(std::ranges::begin(entities), std::ranges::end(entities));
+            if (auto locked = ref.lock()) {
+                boost::asio::post(locked->m_db_strand, [ref, data = std::move(data)]() mutable {
+                    if (auto self = ref.lock())
+                        self->template accept<Container, Container>(std::move(data));
+                });
+            }
         };
     }
 
@@ -149,11 +157,6 @@ public:
             m_db->exec(sql);
         }
     }
-
-    // Transaction factory method
-    // Transaction createTransaction() {
-    //     return Transaction(m_db);
-    // }
 };
 
 } // namespace datahub

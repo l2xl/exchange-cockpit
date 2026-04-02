@@ -146,6 +146,7 @@ set(core_SOURCES
         src/datahub/data_update.hpp
         src/datahub/data_subscription.hpp
         src/datahub/data_feed.hpp
+        src/datahub/data_condition.hpp
 )
 
 add_library(core STATIC ${core_SOURCES})
@@ -275,8 +276,12 @@ if(NOT ANDROID)
     add_test(test_data_sink test/datahub/test_data_sink.cpp)
     add_test(test_data_model test/bybit/test_data_model.cpp)
     add_test(test_data_sandbox test/datahub/test_data_sandbox.cpp)
+    add_test(test_sorted_data_feed test/datahub/test_sorted_data_feed.cpp)
+    add_test(test_sorted_snapshot_data_feed test/datahub/test_sorted_snapshot_data_feed.cpp)
+    add_test(test_keyed_snapshot_data_feed test/datahub/test_keyed_snapshot_data_feed.cpp)
     add_test(test_data_manager test/bybit/test_data_manager.cpp)
-    add_test(test_orderbook test/bybit/test_orderbook.cpp)
+    add_test(test_orderbook test/data/test_orderbook.cpp)
+    add_test(test_bybit_orderbook test/bybit/test_orderbook.cpp)
 
 endif()
 

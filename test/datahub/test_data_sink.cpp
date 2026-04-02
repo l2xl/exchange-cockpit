@@ -57,14 +57,14 @@ static std::string http_samples[] = {
 
 struct DataSinkTestFixture {
     std::shared_ptr<SQLite::Database> db;
-    std::shared_ptr<scheduler> scheduler;
+    std::shared_ptr<scheduler> m_scheduler;
     std::shared_ptr<connect::context> ctx;
     std::shared_ptr<data_model<bybit::PublicTrade, &bybit::PublicTrade::execId>> dao;
 
     DataSinkTestFixture() : db(std::make_shared<SQLite::Database>(":memory:", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE))
-        , scheduler(scheduler::create(1))
-        , ctx(connect::context::create(scheduler->io()))
-        , dao(data_model<bybit::PublicTrade, &bybit::PublicTrade::execId>::create(db))
+        , m_scheduler(scheduler::create(1))
+        , ctx(connect::context::create(m_scheduler->io()))
+        , dao(data_model<bybit::PublicTrade, &bybit::PublicTrade::execId>::create(db, boost::asio::make_strand(m_scheduler->io())))
     {}
 
     ~DataSinkTestFixture() = default;
@@ -80,8 +80,8 @@ TEST_CASE("data_sink deduplication pipeline", "[datahub][http][websocket]")
         [](std::exception_ptr) {});
 
     auto http_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::PublicTrade>>>(
-        [&sink](auto&& resp) { sink->accept(std::move(resp.result.list)); return true; });
-    auto http_dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), http_adapter);
+        [&sink](auto&& resp) { sink->accept(std::move(resp.result.list)); });
+    auto http_dispatcher = make_data_dispatcher(fixture.m_scheduler->io().get_executor(), http_adapter);
 
     SECTION("first write stores 60 trades") {
         http_dispatcher(http_samples[0]);
@@ -103,8 +103,8 @@ TEST_CASE("data_sink deduplication pipeline", "[datahub][http][websocket]")
                     [](std::exception_ptr) {});
 
                 auto ws_adapter = make_data_adapter<bybit::WsApiPayload<std::deque<bybit::WsPublicTrade>>>(
-                    [&ws_sink](auto&& ws_payload) { ws_sink->accept(std::move(ws_payload.data)); return true; });
-                auto ws_dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), ws_adapter);
+                    [&ws_sink](auto&& ws_payload) { ws_sink->accept(std::move(ws_payload.data)); });
+                auto ws_dispatcher = make_data_dispatcher(fixture.m_scheduler->io().get_executor(), ws_adapter);
 
                 for (int i = 1; i < 5; ++i)
                     ws_dispatcher(websock_samples[i]);

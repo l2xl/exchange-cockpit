@@ -57,7 +57,7 @@ public:
 
     ~generic_handler() override = default;
 
-    void handle_data(data_type data) override
+    void handle_data(data_type&& data) override
     {
         try {
             m_data_handler(std::forward<data_type>(data));
@@ -66,6 +66,30 @@ public:
             base::handle_error(std::current_exception());
         }
     }
+};
+
+// Partial specialization: no error callable (ERROR_CALLABLE = void)
+
+template<typename DATA, typename PARENT, typename DATA_CALLABLE, typename ... ARGS>
+class generic_handler<DATA, PARENT, DATA_CALLABLE, void, ARGS...> : public PARENT
+{
+public:
+    using data_type = DATA;
+    using data_callable = std::decay_t<DATA_CALLABLE>;
+
+private:
+    data_callable m_data_handler;
+
+public:
+    generic_handler(DATA_CALLABLE&& data_handler, ARGS&& ... args)
+        : PARENT(std::forward<ARGS>(args)...)
+        , m_data_handler(std::forward<DATA_CALLABLE>(data_handler))
+    { }
+
+    ~generic_handler() override = default;
+
+    void handle_data(data_type&& data) override
+    { m_data_handler(std::forward<data_type>(data)); }
 };
 
 }

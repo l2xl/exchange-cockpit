@@ -14,50 +14,41 @@
 #define DATAHUB_DATA_SUBSCRIPTION_HPP
 
 #include <memory>
-#include <deque>
 #include <type_traits>
 #include <utility>
+#include <ranges>
 
 #include "data_update.hpp"
+#include "generic_handler.hpp"
 
 namespace datahub {
 
-// Notification-only subscription endpoint. No cache — the feed owns the data.
-// Container template parameter determines the range type passed to handle_update;
-// defaults to std::deque for in-memory feeds, extensible to DB cursor container later.
-template<typename Entity, typename Container = std::deque<Entity>>
-class data_subscription
-{
-public:
-    using entity_type = Entity;
-    using container_type = Container;
+using scratcher::generic_handler;
 
+template<std::ranges::input_range Range>
+class data_subscription : public std::enable_shared_from_this<data_subscription<Range>>
+{
+    struct ensure_private {};
+public:
+    using range_view_type = std::ranges::subrange<std::ranges::iterator_t<const Range>>;
+    using data_type = std::pair<update_kind, range_view_type>;
+
+    explicit data_subscription(ensure_private) {}
     virtual ~data_subscription() = default;
-    virtual void handle_update(update_kind kind, const container_type& data) = 0;
+    virtual void handle_data(data_type&& data) = 0;
+
+    template<typename Callable>
+    static std::shared_ptr<data_subscription> create(Callable&& handler)
+    {
+        return std::make_shared<generic_handler<data_type, data_subscription, Callable, void, ensure_private>>(std::forward<Callable>(handler), ensure_private{});
+    }
+
 };
 
-// Concrete handler: stores the callable as a compile-time template parameter.
-// Follows the same pattern as generic_handler / error_handler in generic_handler.hpp.
-template<typename Entity, typename Container, typename Callable>
-class subscription_handler : public data_subscription<Entity, Container>
-{
-    using callable_type = std::decay_t<Callable>;
-    callable_type mHandler;
-
-public:
-    explicit subscription_handler(Callable&& handler)
-        : mHandler(std::forward<Callable>(handler))
-    {}
-
-    void handle_update(update_kind kind, const Container& data) override
-    { mHandler(kind, data); }
-};
-
-template<typename Entity, typename Container = std::deque<Entity>, typename Callable>
+template<std::ranges::input_range Range, typename Callable>
 auto make_data_subscription(Callable&& handler)
 {
-    return std::static_pointer_cast<data_subscription<Entity, Container>>(
-        std::make_shared<subscription_handler<Entity, Container, Callable>>(std::forward<Callable>(handler)));
+    return data_subscription<Range>::create(std::forward<Callable>(handler));
 }
 
 } // namespace datahub

@@ -114,7 +114,7 @@ public:
         return ws;
     }
 
-    virtual void handle_data(std::string data) = 0;
+    virtual void handle_data(std::string&& data) = 0;
     virtual void handle_error(std::exception_ptr eptr) = 0;
 
     void set_heartbeat(std::chrono::seconds seconds, std::function<std::string(size_t number)>);

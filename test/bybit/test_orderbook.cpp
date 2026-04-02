@@ -159,20 +159,22 @@ TEST_CASE("Orderbook pipeline processes snapshot and deltas", "[bybit][orderbook
     using bybit::OrderBookData;
 
     auto sched = scheduler::create(1);
-    auto book = OrderBook::Create();
+    auto book = OrderBook::Create([](auto&& d) {});
 
-    auto ob_acceptor = book->data_acceptor();
+    auto ob_acceptor = [book](std::vector<OrderBookLevel>&& levels) { book->accept(std::move(levels)); };
 
     auto adapter = make_data_adapter<WsApiPayload<OrderBookData>>(
         [ob_acceptor](WsApiPayload<OrderBookData>&& payload) {
-            std::ranges::for_each(payload.data.a, [](auto& ask){ ask.size.negate(); });
-
             if (payload.type == "snapshot")
-                ob_acceptor(std::deque<OrderBookLevel>{});
+                ob_acceptor(std::vector<OrderBookLevel>{});
 
-            if (!payload.data.b.empty()) ob_acceptor(std::move(payload.data.b));
-            if (!payload.data.a.empty()) ob_acceptor(std::move(payload.data.a));
-            return true;
+            // Mirror data_manager: bids reversed (desc→asc) + asks negated (already asc) = single asc-sorted vector
+            std::vector<OrderBookLevel> update;
+            update.reserve(payload.data.b.size() + payload.data.a.size());
+            std::ranges::copy(std::views::reverse(payload.data.b), std::back_inserter(update));
+            std::ranges::transform(payload.data.a, std::back_inserter(update),
+                [](OrderBookLevel level) { level.size = -level.size; return level; });
+            ob_acceptor(std::move(update));
         });
 
     auto dispatcher = make_data_dispatcher(sched->io().get_executor(), std::move(adapter));
@@ -188,9 +190,9 @@ TEST_CASE("Orderbook pipeline processes snapshot and deltas", "[bybit][orderbook
 
         REQUIRE(levels.size() == tv.expected_level_count);
 
-        // Price-descending order invariant
+        // Price-ascending order invariant
         for (size_t i = 1; i < levels.size(); ++i) {
-            REQUIRE(levels[i].price < levels[i - 1].price);
+            REQUIRE(levels[i - 1].price < levels[i].price);
         }
 
         for (const auto& [price, size] : tv.expected_present) {

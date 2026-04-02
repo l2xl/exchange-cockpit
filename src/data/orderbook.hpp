@@ -18,6 +18,7 @@
 #include <memory>
 #include <algorithm>
 #include <ranges>
+#include <functional>
 
 #include "entities/orderbook_level.hpp"
 
@@ -25,67 +26,72 @@ namespace scratcher {
 
 // In-memory orderbook model for data_provider parameterization
 // Maintains sorted levels (price descending) and merges snapshot/delta updates
+// After every merge, pushes the full current state to the registered acceptor
 class OrderBook : public std::enable_shared_from_this<OrderBook>
 {
 public:
     using entity_type = OrderBookLevel;
     using cache_type = std::vector<entity_type>;
+    using acceptor_type = std::function<void(cache_type&&)>;
 
 private:
     std::vector<OrderBookLevel> mLevels;
+    acceptor_type m_acceptor;
 
     struct EnsurePrivate {};
 
 public:
-    explicit OrderBook(EnsurePrivate) {}
+    explicit OrderBook(acceptor_type acceptor, EnsurePrivate)
+        : m_acceptor(std::move(acceptor))
+    {}
 
-    static std::shared_ptr<OrderBook> Create()
-    { return std::make_shared<OrderBook>(EnsurePrivate{}); }
+    static std::shared_ptr<OrderBook> Create(acceptor_type acceptor)
+    { return std::make_shared<OrderBook>(std::move(acceptor), EnsurePrivate{}); }
 
-    auto begin() const { return mLevels.begin(); }
-    auto end() const { return mLevels.end(); }
     const cache_type& Levels() const { return mLevels; }
 
-    template <std::ranges::input_range Range, typename Container = cache_type>
+    template <std::ranges::input_range Range>
     requires std::convertible_to<std::ranges::range_value_t<Range>, OrderBookLevel>
-    auto accept(Range&& entities)
+    void accept(Range&& entities)
     {
         if (std::ranges::empty(entities)) {
             mLevels.clear();
+            return; // snapshot reset — acceptor not called, delta follows immediately
         }
-        else if (mLevels.empty()) {
+        if (mLevels.empty()) {
+            // Fast path for initial snapshot load: input is already sorted asc
             std::ranges::move(std::forward<Range>(entities), std::back_inserter(mLevels));
-            std::ranges::sort(mLevels, [](const OrderBookLevel& a, const OrderBookLevel& b) { return b.price < a.price; });
         }
         else {
-            for (const auto& level : entities) {
-                auto it = std::ranges::find_if(mLevels, [&](const OrderBookLevel& l) { return l.price == level.price; });
-                if (level.size.raw() == 0) {
-                    if (it != mLevels.end()) mLevels.erase(it);
-                }
-                else if (it != mLevels.end()) {
-                    it->size = level.size;
-                }
-                else {
-                    auto pos = std::lower_bound(mLevels.begin(), mLevels.end(), level, [](const OrderBookLevel& a, const OrderBookLevel& b) { return b.price < a.price; });
-                    mLevels.insert(pos, level);
+            // Two-pointer O(n+m) merge — both sequences sorted ascending by price
+            auto e = mLevels.begin();
+            auto u = std::ranges::begin(entities);
+            const auto u_end = std::ranges::end(entities);
+
+            cache_type result;
+            if constexpr (std::ranges::sized_range<Range>)
+                result.reserve(mLevels.size() + std::ranges::size(entities));
+            else
+                result.reserve(mLevels.size());
+
+            while (e != mLevels.end() && u != u_end) {
+                if (e->price < u->price) {
+                    result.push_back(*e++);          // existing level at lower price, keep
+                } else if (u->price < e->price) {
+                    if (u->size.raw() != 0) result.push_back(*u);  // new level, insert
+                    ++u;
+                } else {
+                    if (u->size.raw() != 0) result.push_back(*u);  // update or delete
+                    ++e; ++u;
                 }
             }
-        }
-        return Container(mLevels.begin(), mLevels.end());
-    }
+            while (e != mLevels.end()) result.push_back(*e++);
+            while (u != u_end) { if (u->size.raw() != 0) result.push_back(*u); ++u; }
 
-    template <typename Container = cache_type>
-    auto data_acceptor()
-    {
-        std::weak_ptr<OrderBook> ref = shared_from_this();
-        return [ref]<std::ranges::input_range Range>(Range&& entities) -> Container
-            requires std::convertible_to<std::ranges::range_value_t<Range>, OrderBookLevel>
-        {
-            if (auto self = ref.lock())
-                return self->accept<Range, Container>(std::forward<Range>(entities));
-            return {};
-        };
+            mLevels = std::move(result);
+        }
+        if (m_acceptor)
+            m_acceptor(cache_type(mLevels.begin(), mLevels.end()));
     }
 };
 

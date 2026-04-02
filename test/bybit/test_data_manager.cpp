@@ -66,13 +66,13 @@ TEST_CASE("ByBitDataManager receives instrument list", "[bybit][integration]")
     std::promise<size_t> promise;
     auto future = promise.get_future();
 
-    auto sub = datahub::make_data_subscription<InstrumentInfo>(
-        [&promise](datahub::update_kind, const std::deque<InstrumentInfo>& data) {
+    auto sub = datahub::make_data_subscription<std::deque<InstrumentInfo>>(
+        [&promise](std::pair<datahub::update_kind, std::deque<InstrumentInfo>&&> data) {
             static bool fired = false;
             if (!fired) {
                 fired = true;
-                std::clog << "Received " << data.size() << " instruments" << std::endl;
-                promise.set_value(data.size());
+                std::clog << "Received " << data.second.size() << " instruments" << std::endl;
+                promise.set_value(data.second.size());
             }
         });
 
@@ -88,13 +88,13 @@ TEST_CASE("ByBitDataManager receives public trades and orderbook", "[bybit][inte
     std::promise<size_t> pt_promise;
     auto pt_future = pt_promise.get_future();
 
-    auto pt_sub = datahub::make_data_subscription<PublicTrade>(
-        [&pt_promise](datahub::update_kind, const std::deque<PublicTrade>& data) {
+    auto pt_sub = datahub::make_data_subscription(
+        [&pt_promise](std::pair<datahub::update_kind, std::deque<PublicTrade>&&> data) {
             static bool fired = false;
             if (!fired) {
                 fired = true;
-                std::clog << "Received " << data.size() << " public trades" << std::endl;
-                pt_promise.set_value(data.size());
+                std::clog << "Received " << data.second.size() << " public trades" << std::endl;
+                pt_promise.set_value(data.second.size());
             }
         });
 
@@ -102,12 +102,12 @@ TEST_CASE("ByBitDataManager receives public trades and orderbook", "[bybit][inte
     auto ob_future = ob_promise.get_future();
 
     auto ob_sub = datahub::make_data_subscription<OrderBookLevel>(
-        [&ob_promise](datahub::update_kind, const std::deque<OrderBookLevel>& data) {
+        [&ob_promise](std::pair<datahub::update_kind, std::deque<OrderBookLevel>&&> data) {
             static bool fired = false;
             if (!fired) {
                 fired = true;
-                std::clog << "Received " << data.size() << " orderbook levels" << std::endl;
-                ob_promise.set_value(data.size());
+                std::clog << "Received " << data.second.size() << " orderbook levels" << std::endl;
+                ob_promise.set_value(data.second.size());
             }
         });
 

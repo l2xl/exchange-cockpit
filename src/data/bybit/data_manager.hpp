@@ -42,6 +42,7 @@ class ByBitDataManager : public IDataController, public std::enable_shared_from_
 {
 public:
     using instrument_sink_type = datahub::data_sink<datahub::data_model<InstrumentInfo, &InstrumentInfo::symbol>>;
+    using db_strand_type = datahub::data_model<InstrumentInfo, &InstrumentInfo::symbol>::strand_type;
     using orderbook_sink_type  = datahub::data_sink<OrderBook>;
     using orderbook_sink_ptr   = std::shared_ptr<orderbook_sink_type>;
     using pubtrade_sink_type   = datahub::data_sink<datahub::data_model<PublicTrade, &PublicTrade::execId>>;
@@ -49,9 +50,9 @@ public:
     using private_order_sink_type = datahub::data_sink<datahub::data_model<Order, &Order::orderId>>;
     using private_trade_sink_type = datahub::data_sink<datahub::data_model<Trade, &Trade::execId>>;
 
-    using instrument_feed_type = datahub::snapshot_data_feed<InstrumentInfo>;
+    using instrument_feed_type = datahub::keyed_snapshot_data_feed<InstrumentInfo, &InstrumentInfo::symbol>;
 
-    using orderbook_feed_type      = datahub::snapshot_data_feed<OrderBookLevel>;
+    using orderbook_feed_type      = datahub::sorted_snapshot_data_feed<OrderBookLevel, &OrderBookLevel::price, &OrderBookLevel::price>;
     using orderbook_feed_ptr       = std::shared_ptr<orderbook_feed_type>;
     using pubtrade_feed_type       = datahub::sorted_data_feed<PublicTrade, &PublicTrade::time, &PublicTrade::execId>;
     using pubtrade_feed_ptr        = std::shared_ptr<pubtrade_feed_type>;
@@ -64,6 +65,7 @@ private:
     std::shared_ptr<connect::context>          m_context;
     std::shared_ptr<SQLite::Database>          m_db;
     std::shared_ptr<IExchangeConfig>           m_config;
+    db_strand_type                             m_db_strand;
 
     std::shared_ptr<instrument_feed_type>        m_instrument_feed;
     std::shared_ptr<private_order_feed_type>     m_private_order_feed;
@@ -94,10 +96,13 @@ public:
 
     void HandleError(std::exception_ptr eptr);
 
-    void SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<InstrumentInfo>> sub) override;
-    void SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<OrderBookLevel>> ob_sub, std::weak_ptr<datahub::data_subscription<PublicTrade>> pt_sub) override;
-    void SubscribeOrders(std::weak_ptr<datahub::data_subscription<Order>> sub) override;
-    void SubscribeTrades(std::weak_ptr<datahub::data_subscription<Trade>> sub) override;
+    void SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<std::deque<InstrumentInfo>>> sub) override;
+    void SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<std::deque<OrderBookLevel>>> ob_sub, std::weak_ptr<datahub::data_subscription<std::deque<PublicTrade>>> pt_sub) override;
+    void SubscribeOrders(std::weak_ptr<datahub::data_subscription<std::deque<Order>>> sub) override;
+    void SubscribeTrades(std::weak_ptr<datahub::data_subscription<std::deque<Trade>>> sub) override;
+
+    const datahub::keyed_snapshot_data_feed<InstrumentInfo, &InstrumentInfo::symbol>& getInstrumentsFeed() const override
+    { return *m_instrument_feed; }
 
     void PlaceOrder(OrderRequest request, std::function<void(std::string orderId)> callback) override;
     void CancelOrder(const std::string& orderId, const std::string& symbol) override;
