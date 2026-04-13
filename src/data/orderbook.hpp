@@ -14,7 +14,7 @@
 #ifndef SCRATCHER_ORDERBOOK_HPP
 #define SCRATCHER_ORDERBOOK_HPP
 
-#include <vector>
+#include <deque>
 #include <memory>
 #include <algorithm>
 #include <ranges>
@@ -31,11 +31,11 @@ class OrderBook : public std::enable_shared_from_this<OrderBook>
 {
 public:
     using entity_type = OrderBookLevel;
-    using cache_type = std::vector<entity_type>;
+    using cache_type = std::deque<entity_type>;
     using acceptor_type = std::function<void(cache_type&&)>;
 
 private:
-    std::vector<OrderBookLevel> mLevels;
+    cache_type mLevels;
     acceptor_type m_acceptor;
 
     struct EnsurePrivate {};
@@ -69,10 +69,6 @@ public:
             const auto u_end = std::ranges::end(entities);
 
             cache_type result;
-            if constexpr (std::ranges::sized_range<Range>)
-                result.reserve(mLevels.size() + std::ranges::size(entities));
-            else
-                result.reserve(mLevels.size());
 
             while (e != mLevels.end() && u != u_end) {
                 if (e->price < u->price) {

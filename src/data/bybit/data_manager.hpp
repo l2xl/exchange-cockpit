@@ -94,7 +94,7 @@ public:
 
     const std::string& Name() const override { return BYBIT; }
 
-    void HandleError(std::exception_ptr eptr);
+    static void HandleError(std::weak_ptr<ByBitDataManager> ref, std::exception_ptr eptr);
 
     void SubscribeInstrumentList(std::weak_ptr<datahub::data_subscription<std::deque<InstrumentInfo>>> sub) override;
     void SubscribeInstrument(std::string symbol, std::weak_ptr<datahub::data_subscription<std::deque<OrderBookLevel>>> ob_sub, std::weak_ptr<datahub::data_subscription<std::deque<PublicTrade>>> pt_sub) override;

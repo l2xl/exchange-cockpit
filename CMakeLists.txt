@@ -108,13 +108,13 @@ else()
 endif()
 
 set(core_SOURCES
-        src/common/generic_handler.hpp
         src/common/exchange_config.hpp
         src/common/currency.hpp
         src/common/hex.cpp
         src/common/hex.hpp
         src/common/timedef.hpp
         src/common/data_rectangle.hpp
+        src/core/generic_handler.hpp
         src/core/scheduler.cpp
         src/core/scheduler.hpp
         src/data/buoy_candle.cpp

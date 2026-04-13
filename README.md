@@ -6,9 +6,9 @@ This is the general purpose standalone exchange client created by engineers for 
 
 It aims to provide
 
-1. Highly modular and flexible GUI created with QT
+1. Highly modular and flexible cross-platform GUI
 
-2. Clean trading widget which gives undistorted trading view with maximun information for a trader
+2. Clean trading widget gives undistorted trading view with maximun information for a trader
 
 3. Universal trading API to run a third-party or implement and run your out automated trading starategy
 
@@ -16,6 +16,6 @@ It aims to provide
 
 5. Extensible set of plugins to connect to different exchanges, crypto-exchanges at first
 
-## Documentation
+## Contributing
 
-- [Project Design & Development Context](PROJECT_DESIGN.md) - Architecture decisions, development workflow, and session continuity
+- Read `CONTRIBUTING.md`

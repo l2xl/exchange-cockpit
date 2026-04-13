@@ -95,11 +95,6 @@ namespace {
 
 } // anonymous namespace
 
-// Glaze-reflected types must live at namespace scope
-struct PlaceOrderResult   { std::string orderId; };
-struct PlaceOrderResponse { int retCode{0}; PlaceOrderResult result; };
-struct CancelOrderRequest { std::string category; std::string symbol; std::string orderId; };
-
 const std::string ByBitDataManager::BYBIT = "ByBit";
 
 ByBitDataManager::ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::shared_ptr<IExchangeConfig> config, std::shared_ptr<SQLite::Database> db, ensure_private)
@@ -117,7 +112,7 @@ std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<sched
     auto self = std::make_shared<ByBitDataManager>(scheduler, std::move(config), std::move(db), ensure_private{});
     std::weak_ptr<ByBitDataManager> ref = self;
 
-    auto error_cb = [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); };
+    auto error_cb = [ref](std::exception_ptr e){ HandleError(ref, e); };
 
     auto instrument_model = datahub::data_model<InstrumentInfo, &InstrumentInfo::symbol>::create(self->m_db, self->m_db_strand, {});
     self->m_instrument_sink = datahub::make_data_sink(std::move(instrument_model), self->m_instrument_feed->data_acceptor<std::deque<InstrumentInfo>>(), error_cb);
@@ -135,18 +130,20 @@ std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<sched
     return self;
 }
 
-void ByBitDataManager::HandleError(std::exception_ptr eptr)
+void ByBitDataManager::HandleError(std::weak_ptr<ByBitDataManager> ref, std::exception_ptr eptr)
 {
-    try {
-        std::rethrow_exception(eptr);
-    } catch (const std::exception& ex) {
-        std::cerr << "ByBit data error: " << ex.what() << std::endl;
-    }
+//    if (auto self = ref.lock()) {
+        try {
+            std::rethrow_exception(eptr);
+        } catch (const std::exception& ex) {
+            std::cerr << "ByBit data error: " << ex.what() << std::endl;
+        }
+//    }
 }
 
 void ByBitDataManager::SetupInstrumentDataSource()
 {
-    std::string url = "https://" + m_config->HttpHost() + ":" + m_config->HttpPort() + API_INSTRUMENTS;
+    const std::string url = "https://" + m_config->HttpHost() + ":" + m_config->HttpPort() + API_INSTRUMENTS;
     std::clog << "setupInstrumentDataSource: " << url << std::endl;
 
     auto data_sink = m_instrument_sink->data_acceptor<std::deque<InstrumentInfoAPI>>();
@@ -162,17 +159,14 @@ void ByBitDataManager::SetupInstrumentDataSource()
     auto dispatcher = datahub::make_data_dispatcher(m_context->io().get_executor(), std::move(resp_adapter));
 
     m_instruments_query = connect::http_query::create(m_context, url, std::move(dispatcher),
-        [ref](std::exception_ptr e) {
-            if (auto self = ref.lock())
-                self->HandleError(e);
-        }
+        [ref](std::exception_ptr e) { HandleError(ref, e); }
     );
 }
 
 void ByBitDataManager::SetupPublicDataSource()
 {
     auto ref = weak_from_this();
-    auto error_cb = [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); };
+    auto error_cb = [ref](std::exception_ptr e){ HandleError(ref, e); };
 
     m_public_stream = connect::websock_connection::create(m_context,
         "wss://" + m_config->StreamHost() + ":" + m_config->StreamPort() + STREAM_PUBLIC_SPOT,
@@ -226,7 +220,7 @@ void ByBitDataManager::SetupPrivateDataSource()
     }
 
     auto ref = weak_from_this();
-    auto error_cb = [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); };
+    auto error_cb = [ref](std::exception_ptr e){ HandleError(ref, e); };
 
     auto order_acceptor = m_private_order_sink->data_acceptor<std::deque<Order>>();
     auto trade_acceptor = m_private_trade_sink->data_acceptor<std::deque<Trade>>();
@@ -258,12 +252,12 @@ void ByBitDataManager::SubscribeInstrument(std::string symbol, std::weak_ptr<dat
 {
     auto& [ob_sink, ob_feed, pt_sink, pt_feed] = m_pubdata_accept[symbol];
     auto ref = weak_from_this();
-    auto error_cb = [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); };
+    auto error_cb = [ref](std::exception_ptr e){ HandleError(ref, e); };
 
     if (!ob_feed) {
         ob_feed = orderbook_feed_type::create();
         ob_sink = datahub::make_data_sink(
-            OrderBook::Create(ob_feed->template data_acceptor<std::vector<OrderBookLevel>>()),
+            OrderBook::Create(ob_feed->template data_acceptor<std::deque<OrderBookLevel>>()),
             [](orderbook_sink_type::cache_type&&) {},
             error_cb);
         (*m_public_stream)(subscribe_message("orderbook.50." + symbol));
@@ -305,14 +299,14 @@ void ByBitDataManager::PlaceOrder(OrderRequest request, std::function<void(std::
     auto query = connect::http_query::create(m_context, boost::beast::http::verb::post,
         "https://" + m_config->HttpHost() + ":" + m_config->HttpPort() + "/v5/order/create",
         [callback](std::string&& response_json) {
-            PlaceOrderResponse resp;
+            ApiResponse<PlaceOrderResult> resp;
             if (!glz::read<glz::opts{.error_on_unknown_keys = false}>(resp, response_json) && resp.retCode == 0) {
                 if (callback) callback(std::move(resp.result.orderId));
             } else {
                 std::cerr << "PlaceOrder failed: " << response_json << std::endl;
             }
         },
-        [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); });
+        [ref](std::exception_ptr e){ HandleError(ref, e); });
     (*query)({}, std::move(headers), std::move(body));
 }
 
@@ -331,7 +325,7 @@ void ByBitDataManager::CancelOrder(const std::string& orderId, const std::string
     auto query = connect::http_query::create(m_context, boost::beast::http::verb::post,
         "https://" + m_config->HttpHost() + ":" + m_config->HttpPort() + "/v5/order/cancel",
         [](std::string&& response_json) { std::clog << "CancelOrder response: " << response_json << std::endl; },
-        [ref](std::exception_ptr e){ if (auto s = ref.lock()) s->HandleError(e); });
+        [ref](std::exception_ptr e){ HandleError(ref, e); });
     (*query)({}, std::move(headers), std::move(body));
 }
 

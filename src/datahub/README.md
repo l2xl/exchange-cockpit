@@ -4,29 +4,31 @@
 
 Datahub is a composable data pipeline where each stage is optional. All stages share the same `data_acceptor` concept — a callable `(Range&&) -> void` — so any stage can be directly wired to the next, skipping intermediate layers when they are not needed.
 
-Datahub is designed as generic data pipeline where every class made as mutch generic as possible to nit couple any data types, containers, etc. Event if the previous element in the chain may have some restricted types due to its nature, the next must not rely on these types and restrictions and provide as generic implementation as possible.  
+Datahub is designed as a generic data pipeline where every class made as much generic as possible to do not couple any data types, containers, etc. Even if the previous element in the chain may have some restricted types due to its nature, the next must not rely on these types and restrictions and provide as generic implementation as possible.  
+
+C++ Namespace: `datahub`
 
 ## Full Pipeline
 
 ```
-JSON source (HTTP / WebSocket)
+Data source (HTTP / WebSocket / File)
     │
     ▼
 data_dispatcher<Acceptors...>          — async SPSC queue + strand; tries each adapter in order
     │
     ▼
 data_adapter<DataType, Handler>        — Glaze JSON → C++ struct; on failure falls through to next
-    │  handler lambda
+    │
     ▼
 data_sink<Model>                       — links persistence model to the feed layer
     └─ model->accept(cache)            — persists / merges (data_model or custom model)
     │
     │  handle_data(cache copy)         — fires feed acceptor (subscribers notified immediately)
     ▼
-data_feed  (sorted_data_feed / snapshot_data_feed)
+data_feed (sorted_data_feed / snapshot_data_feed / etc.)
     │  optional data_condition filter
     ▼
-data_subscription<Entity>             — leaf callbacks; snapshot delivered to new subscriber on attach
+data_subscription<Range>               — leaf callbacks; snapshot delivered to new subscriber on attach
 ```
 
 ## Reduced Pipelines
@@ -100,16 +102,21 @@ data_model::data_acceptor<Range, Container>()  — posts accept() on db_strand
 - `data_acceptor<Range>()` — filters by optional condition, skips known keys, inserts sorted, notifies with `update_kind::increment` or `update_kind::snapshot`
 - `subscribe(weak_ptr<subscription_type>)` — fires current cache as snapshot to new subscriber if non-empty
 
-#### snapshot_data_feed<Entity>
-- In-memory cache that replaces entire state on each update
-- `data_acceptor<Range>()` — clears, filters by optional condition, rebuilds, notifies with `update_kind::snapshot`
+#### sorted_snapshot_data_feed<Entity, SortField, KeyField>
+- In-memory sorted cache that always delivers full state as snapshot on each update
+- `data_acceptor<Range>()` — filters by optional condition, merge-inserts sorted by `SortField` deduplicated by `KeyField`, notifies with `update_kind::snapshot`
+- `subscribe(weak_ptr<subscription_type>)` — fires current cache as snapshot to new subscriber if non-empty
+
+#### keyed_snapshot_data_feed<Entity, KeyField>
+- In-memory keyed cache with upsert semantics: existing entries matched by `KeyField` are replaced, new entries are appended
+- `data_acceptor<Range>()` — filters by optional condition, upserts by `KeyField`, notifies with `update_kind::snapshot`
 - `subscribe(weak_ptr<subscription_type>)` — fires current cache as snapshot to new subscriber if non-empty
 
 #### db_data_feed<Entity>
 - DB feed which translates query with condition into resulting range with DB cursor
 TODO
 
-Both feed types accept an optional `shared_ptr<data_condition<Entity>>` at creation or via `set_condition()`.
+All feed types accept an optional `shared_ptr<data_condition<Entity>>` at creation or via `set_condition()`.
 
 ### data_condition<Entity> (`src/datahub/data_condition.hpp`)
 - Composite AND filter dual-purpose: in-memory predicate and SQL `QueryCondition` generation
@@ -119,9 +126,12 @@ Both feed types accept an optional `shared_ptr<data_condition<Entity>>` at creat
 - `to_query_condition()` — produces SQL WHERE clause
 - Static factory methods: `equal<Field>(v)`, `not_equal<Field>(v)`, `less<Field>(v)`, `less_or_equal<Field>(v)`, `greater<Field>(v)`, `greater_or_equal<Field>(v)`
 
-### data_subscription<Entity, Container> (`src/datahub/data_subscription.hpp`)
-- Abstract leaf: `handle_update(update_kind, const Container&) = 0`
-- Factory: `make_data_subscription<Entity>(callable)` → `shared_ptr<data_subscription<Entity>>`; callable: `(update_kind, const deque<Entity>&) -> void`
+### data_subscription<Range> (`src/datahub/data_subscription.hpp`)
+- Parameterized on `std::ranges::input_range Range` (e.g. `std::deque<Entity>`)
+- `range_view_type = std::ranges::subrange<std::ranges::iterator_t<const Range>>`
+- `data_type = std::pair<update_kind, range_view_type>`
+- Abstract leaf: `handle_data(data_type&&) = 0`
+- Factory: `make_data_subscription<Range>(callable)` → `shared_ptr<data_subscription<Range>>`; callable: `(data_type&&) -> void`
 
 ### update_kind (`src/datahub/data_update.hpp`)
 - `enum class update_kind { snapshot, increment }`
@@ -129,7 +139,6 @@ Both feed types accept an optional `shared_ptr<data_condition<Entity>>` at creat
 ## Key Design Rules
 
 - **Weak ptr safety**: all async callbacks capture `weak_ptr` to avoid circular refs and handle object lifetime
-- **Snapshot-on-subscribe**: both feed types immediately deliver current state to a newly attached subscriber
-- **Dedup at model layer only**: `data_model::accept()` filters duplicate rows; feeds always receive raw incoming data
 - **One strand per DB**: all `data_model` instances backed by the same database share one `strand_type`
 - **Thread safety boundary**: `data_dispatcher` serializes JSON dispatch; `data_model` serializes DB access via strand; feed mutation happens on whichever thread calls the acceptor (usually data_dispatcher)
+- **Subscriptions are held by weak_prt**: allowing automatic lazy subscription management (no explicit unsubscribe) – destroyed subscription detected by weak_pts probe.   

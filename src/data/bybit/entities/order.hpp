@@ -91,6 +91,19 @@ struct OrderRequest {
     std::optional<bool> reduceOnly;
 };
 
+
+struct PlaceOrderResult
+{
+    std::string orderId;
+};
+struct CancelOrderRequest
+{
+    std::string category;
+    std::string symbol;
+    std::string orderId;
+};
+
+
 } // namespace scratcher::bybit
 
 #endif // BYBIT_ORDER_HPP
