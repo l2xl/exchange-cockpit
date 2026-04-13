@@ -59,8 +59,8 @@ struct InstrumentInfo {
 namespace detail {
     struct PriceFilter {
         std::string tickSize;
-        std::string minPrice;
-        std::string maxPrice;
+        std::optional<std::string> minPrice;
+        std::optional<std::string> maxPrice;
     };
 
     struct LotSizeFilter {

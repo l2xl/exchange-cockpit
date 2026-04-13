@@ -206,6 +206,11 @@ void ByBitDataManager::SetupPublicDataSource()
                             ob_sink->accept(std::move(update));
                         }
                     }
+                }),
+
+            datahub::make_data_adapter<WsOpResponse>(
+                [](WsOpResponse&& resp) {
+                    std::clog << "WebSocket [" << resp.conn_id << "] op=" << resp.op << " " << resp.ret_msg.value_or("") << std::endl;
                 })),
 
                 error_cb);

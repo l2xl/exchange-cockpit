@@ -21,6 +21,16 @@
 
 namespace scratcher::bybit {
 
+// WebSocket ByBit op response (pong, subscribe ack, auth ack, etc.)
+// Example: {"success":true,"ret_msg":"pong","conn_id":"d51ppl61co6ugbr8h5o0-hcqh2","req_id":"1","op":"ping"}
+struct WsOpResponse {
+    bool success{false};
+    std::optional<std::string> ret_msg;
+    std::string conn_id;
+    std::string req_id;
+    std::string op;
+};
+
 // WebSocket ByBit API market data payload structure
 // Example: {"topic":"publicTrade.BTCUSDC","ts":1761520812165,"type":"snapshot","data":[...]}
 // T is the data field type directly (use std::deque<X> for array payloads, or a struct for single-object payloads)

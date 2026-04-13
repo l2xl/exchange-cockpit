@@ -56,6 +56,7 @@ websock_connection::websock_connection(std::shared_ptr<context> ctx, const std::
 void websock_connection::set_heartbeat(std::chrono::seconds seconds, std::function<std::string(size_t number)> heartbeat_generator)
 {
     m_make_heartbeat_mesage = std::move(heartbeat_generator);
+    m_heartbeat_interval = seconds;
     m_heartbeat_timer->expires_after(seconds);
 }
 
@@ -92,6 +93,7 @@ boost::asio::awaitable<void> websock_connection::co_heartbeat_loop(std::weak_ptr
                     co_await self->m_websocket->async_write(boost::asio::buffer(heartbeat_message), use_awaitable);
 
                     self->m_last_heartbeat = now;
+                    heartbeat_timer->expires_after(self->m_heartbeat_interval);
                 }
 
                 self.reset();
@@ -109,7 +111,7 @@ boost::asio::awaitable<void> websock_connection::co_heartbeat_loop(std::weak_ptr
         catch (std::exception& e) {
             if (auto self = ref.lock()) {
                 self->m_status = status::STALE;
-                std::cerr << "Heartbeat unknown error: " << e.what() << std::endl;
+                std::cerr << "Heartbeat unexpected error: " << e.what() << std::endl;
                 heartbeat_timer->expires_after(std::chrono::steady_clock::duration::max());
             }
             else break;

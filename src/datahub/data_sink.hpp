@@ -46,7 +46,7 @@ public:
         std::clog << "Try JSON: " << json_data << std::endl;
         try {
             data_type result{};
-            auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(result, json_data);
+            auto err = glz::read<glz::opts{.error_on_unknown_keys = false, .error_on_missing_keys = true}>(result, json_data);
             if (!err) {
                 m_handler(std::move(result));
                 return true;

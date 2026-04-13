@@ -67,6 +67,7 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
     // Heartbeat management
     std::function<std::string(size_t)> m_make_heartbeat_mesage = [](size_t){ return std::string{}; };
     std::shared_ptr<boost::asio::steady_timer> m_heartbeat_timer;
+    std::chrono::seconds m_heartbeat_interval{0};
     std::chrono::steady_clock::time_point m_last_heartbeat;
     std::atomic<size_t> m_request_counter = 0;
 
