@@ -147,7 +147,7 @@ el::element_ptr UiBuilder::MakePanelTypeSelector(
 {
     auto popup = el::share(
         el::momentary_button<AutoPositionMenu>(
-            el::margin({4, 2, 4, 2}, el::icon(icon_code, 0.7f))
+            el::margin({4, 2, 4, 2}, el::icon(icon_code, 1.0f))
         )
     );
 
@@ -171,7 +171,7 @@ el::element_ptr UiBuilder::MakePanelTypeSelector(
 }
 
 InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
-    std::function<void(PanelType)> onChangeType,
+    std::function<void()> onClose,
     std::function<void(PanelType, SplitDirection)> onSplit)
 {
     InstrumentPanelWidgets w;
@@ -181,14 +181,12 @@ InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
     auto instrumentBtn = el::share(
         el::momentary_button<AutoPositionMenu>(
             el::margin({6, 2, 6, 2},
-                el::htile(
-                    el::label("Instrument").font_size(12).font_color(dim_text_color),
-                    el::hspace(4),
-                    el::icon(el::icons::down_dir, 0.7f)
-                )
+                el::icon(el::icons::down_dir, 1.0f)
             )
         )
     );
+
+    constexpr float instrument_menu_max_height = 400.0f;
 
     {
         el::vtile_composite placeholder;
@@ -196,7 +194,7 @@ InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
         placeholder.push_back(el::share(std::move(item)));
         instrumentBtn->menu(
             el::layer(
-                el::vtile(std::move(placeholder)),
+                el::vsize(instrument_menu_max_height, el::vscroller(el::vtile(std::move(placeholder)))),
                 el::panel{}
             )
         );
@@ -214,7 +212,7 @@ InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
         }
         instrumentBtn->menu(
             el::layer(
-                el::vtile(std::move(items)),
+                el::vsize(instrument_menu_max_height, el::vscroller(el::vtile(std::move(items)))),
                 el::panel{}
             )
         );
@@ -224,17 +222,22 @@ InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
         titleLabel->set_text(text);
     };
 
+    auto title_group = el::share(
+        el::htile(
+            el::hold(instrumentBtn),
+            el::hspace(4),
+            el::align_middle(el::hold(titleLabel)),
+            el::hspace(4),
+            el::hold(MakeCloseButton(std::move(onClose)))
+        )
+    );
+
     auto header = el::share(
         el::layer(
             el::margin({2, 1, 2, 1},
                 el::htile(
-                    el::hold(MakePanelTypeSelector(el::icons::down_dir, std::move(onChangeType))),
-                    el::hspace(4),
-                    el::hold(instrumentBtn),
-                    el::hspace(8),
-                    el::hstretch(1.0,
-                        el::align_center(el::hold(titleLabel))
-                    ),
+                    el::hold(title_group),
+                    el::hstretch(1.0, el::element{}),
                     el::hold(MakePanelTypeSelector(el::icons::plus, [onSplit](PanelType t) {
                         if (onSplit) onSplit(t, SplitDirection::Vertical);
                     }))
@@ -275,19 +278,42 @@ InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
     return w;
 }
 
-std::pair<el::element_ptr, std::shared_ptr<el::deck_composite>> UiBuilder::MakePanel(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void(PanelType, SplitDirection)> onSplit)
+std::pair<el::element_ptr, std::shared_ptr<el::deck_composite>> UiBuilder::MakePanel(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void()> onClose, std::function<void(PanelType, SplitDirection)> onSplit)
 {
     auto deck = std::make_shared<el::deck_composite>();
-    deck->push_back(MakeWaitingIndicator());
+    if (type == PanelType::Empty) {
+        deck->push_back(
+            el::share(
+                el::layer(
+                    el::align_center_middle(
+                        el::label("Select a panel type").font_size(14).font_color(dim_text_color)
+                    ),
+                    el::box(content_bg_color)
+                )
+            )
+        );
+    } else {
+        deck->push_back(MakeWaitingIndicator());
+    }
     deck->select(0);
 
-    auto root = el::share(
-        el::vtile(
-            el::hold(MakePanelHeader(type, std::move(onChangeType), onSplit)),
-            el::vstretch(1.0, el::hold(deck)),
-            el::hold(MakePanelFooter(std::move(onSplit)))
-        )
-    );
+    el::element_ptr root;
+    if (type == PanelType::Empty) {
+        root = el::share(
+            el::vtile(
+                el::hold(MakePanelHeader(type, std::move(onChangeType), std::move(onClose), nullptr)),
+                el::vstretch(1.0, el::hold(deck))
+            )
+        );
+    } else {
+        root = el::share(
+            el::vtile(
+                el::hold(MakePanelHeader(type, std::move(onChangeType), std::move(onClose), onSplit)),
+                el::vstretch(1.0, el::hold(deck)),
+                el::hold(MakePanelFooter(std::move(onSplit)))
+            )
+        );
+    }
 
     return std::make_pair(std::move(root), std::move(deck));
 }
@@ -322,28 +348,81 @@ el::element_ptr UiBuilder::MakeDivider(bool horizontal)
     return el::share(el::vmin_size(1, el::hsize(4, el::box(divider_color))));
 }
 
-el::element_ptr UiBuilder::MakePanelHeader(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void(PanelType, SplitDirection)> onSplit)
+el::element_ptr UiBuilder::MakePanelHeader(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void()> onClose, std::function<void(PanelType, SplitDirection)> onSplit)
 {
+    auto title = el::label(PanelTypeName(type))
+        .font_size(12)
+        .font_color(label_text_color);
+
+    el::element_ptr leading;
+    if (type == PanelType::Empty) {
+        leading = MakePanelTypeSelector(el::icons::down_dir, std::move(onChangeType));
+    } else {
+        leading = MakeCloseButton(std::move(onClose));
+    }
+
+    el::element_ptr title_group;
+    if (type == PanelType::Empty) {
+        title_group = el::share(
+            el::htile(
+                el::hold(leading),
+                el::hspace(4),
+                el::align_middle(std::move(title))
+            )
+        );
+    } else {
+        title_group = el::share(
+            el::htile(
+                el::align_middle(std::move(title)),
+                el::hspace(4),
+                el::hold(leading)
+            )
+        );
+    }
+
+    if (!onSplit) {
+        return el::share(
+            el::layer(
+                el::margin({2, 1, 2, 1},
+                    el::htile(
+                        el::hold(title_group),
+                        el::hstretch(1.0, el::element{})
+                    )
+                ),
+                el::box(header_bg_color)
+            )
+        );
+    }
+
+    auto split_btn = MakePanelTypeSelector(el::icons::plus, [onSplit](PanelType t) {
+        if (onSplit) onSplit(t, SplitDirection::Vertical);
+    });
+
     return el::share(
         el::layer(
             el::margin({2, 1, 2, 1},
                 el::htile(
-                    el::hold(MakePanelTypeSelector(el::icons::down_dir, std::move(onChangeType))),
-                    el::hstretch(1.0,
-                        el::align_center(
-                            el::label(PanelTypeName(type))
-                                .font_size(12)
-                                .font_color(label_text_color)
-                        )
-                    ),
-                    el::hold(MakePanelTypeSelector(el::icons::plus, [onSplit](PanelType t) {
-                        if (onSplit) onSplit(t, SplitDirection::Vertical);
-                    }))
+                    el::hold(title_group),
+                    el::hstretch(1.0, el::element{}),
+                    el::hold(split_btn)
                 )
             ),
             el::box(header_bg_color)
         )
     );
+}
+
+el::element_ptr UiBuilder::MakeCloseButton(std::function<void()> onClose)
+{
+    auto btn = el::share(
+        el::momentary_button(
+            el::margin({4, 2, 4, 2}, el::icon(el::icons::cancel, 1.0f))
+        )
+    );
+    btn->on_click = [onClose](bool) {
+        if (onClose) onClose();
+    };
+    return btn;
 }
 
 el::element_ptr UiBuilder::MakePanelFooter(std::function<void(PanelType, SplitDirection)> onSplit)

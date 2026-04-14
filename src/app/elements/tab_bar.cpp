@@ -135,7 +135,7 @@ void TabBar::RebuildTabButtons()
                 el::button_styler{mTabs[i].label}
                     .body_color(body_color)
                     .text_color(text_color)
-                    .corner_radius(0)
+                    .corner_radius(1)
             )
         );
 
@@ -147,7 +147,8 @@ void TabBar::RebuildTabButtons()
             auto close_btn = el::share(
                 el::momentary_button(
                     el::margin({2, 2, 4, 2},
-                        el::label("x").font_size(9).font_color(el::colors::red)
+                        //el::label("✕").font_size(12)
+                        el::icon(el::icons::cancel, 1.0f)
                     )
                 )
             );

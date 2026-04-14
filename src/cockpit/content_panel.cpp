@@ -18,6 +18,7 @@ namespace scratcher::cockpit {
 std::string PanelTypeName(PanelType type)
 {
     switch (type) {
+    case PanelType::Empty:        return "Empty";
     case PanelType::MarketGraph:  return "Market Graph";
     case PanelType::OrderBook:    return "Order Book";
     case PanelType::Orders:       return "Orders";

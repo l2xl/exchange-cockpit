@@ -136,7 +136,7 @@ void MainWindow::SetupContent()
         )
     );
 
-    OnNewTab(PanelType::TradeHistory);
+    OnNewTab(PanelType::Empty);
 }
 
 void MainWindow::OnNewTab(PanelType type)
@@ -161,6 +161,9 @@ std::shared_ptr<LeafPanelNode> MainWindow::MakeLeaf(PanelType type)
     auto onSplit = [this, w = std::weak_ptr(leaf)](PanelType newType, SplitDirection dir) {
         if (auto n = w.lock()) HandleSplit(n, newType, dir);
     };
+    auto onClose = [this, w = std::weak_ptr(leaf)]() {
+        if (auto n = w.lock()) HandleClose(n);
+    };
 
     std::shared_ptr<cockpit::ContentPanel> panel;
     el::element_ptr element;
@@ -168,12 +171,12 @@ std::shared_ptr<LeafPanelNode> MainWindow::MakeLeaf(PanelType type)
     const bool instrumentBased = (type == PanelType::MarketGraph || type == PanelType::OrderBook);
 
     if (instrumentBased && mDataControllerAccessor) {
-        auto widgets = mBuilder.MakeInstrumentPanel(type, std::move(onChangeType), std::move(onSplit));
+        auto widgets = mBuilder.MakeInstrumentPanel(type, std::move(onClose), std::move(onSplit));
         element = widgets.root;
         std::weak_ptr<IDataController> ctl = mDataControllerAccessor();
         panel = ElementsInstrumentPanel::Create(type, mView, std::move(ctl), std::move(widgets));
     } else {
-        auto [elem, deck] = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onSplit));
+        auto [elem, deck] = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onClose), std::move(onSplit));
         element = std::move(elem);
         panel = std::make_shared<ElementsContentPanel>(type, mView, std::move(deck));
     }
@@ -200,6 +203,40 @@ void MainWindow::HandleSplit(std::shared_ptr<LeafPanelNode> node, PanelType newT
     auto newLeaf = MakeLeaf(newType);
     auto split = std::make_shared<SplitPanelNode>(mView, dir, node, newLeaf);
     ReplaceNode(node, split);
+}
+
+void MainWindow::HandleClose(std::shared_ptr<LeafPanelNode> node)
+{
+    for (auto& [tid, root] : mTabRoots) {
+        if (root.node == node) {
+            if (mTabBar->TabCount() > 1) {
+                mTabRoots.erase(tid);
+                mTabBar->RemoveTab(tid);
+            } else {
+                auto emptyLeaf = MakeLeaf(PanelType::Empty);
+                ReplaceNode(node, emptyLeaf);
+            }
+            return;
+        }
+    }
+
+    for (auto& [tid, root] : mTabRoots) {
+        if (!root.node->IsLeaf() && ContainsNode(root.node.get(), node.get())) {
+            std::function<std::shared_ptr<SplitPanelNode>(std::shared_ptr<PanelNode>)> findParent;
+            findParent = [&](std::shared_ptr<PanelNode> current) -> std::shared_ptr<SplitPanelNode> {
+                if (current->IsLeaf()) return nullptr;
+                auto split = std::static_pointer_cast<SplitPanelNode>(current);
+                if (split->First() == node || split->Second() == node) return split;
+                if (auto found = findParent(split->First())) return found;
+                return findParent(split->Second());
+            };
+            if (auto parent = findParent(root.node)) {
+                auto sibling = (parent->First() == node) ? parent->Second() : parent->First();
+                ReplaceNode(parent, sibling);
+                return;
+            }
+        }
+    }
 }
 
 void MainWindow::ReplaceNode(std::shared_ptr<PanelNode> oldNode, std::shared_ptr<PanelNode> newNode)

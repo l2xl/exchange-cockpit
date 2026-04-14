@@ -51,6 +51,7 @@ private:
 
     void HandleChangeType(std::shared_ptr<LeafPanelNode> node, cockpit::PanelType newType);
     void HandleSplit(std::shared_ptr<LeafPanelNode> node, cockpit::PanelType newType, SplitDirection dir);
+    void HandleClose(std::shared_ptr<LeafPanelNode> node);
 
     void ReplaceNode(std::shared_ptr<PanelNode> oldNode, std::shared_ptr<PanelNode> newNode);
 
