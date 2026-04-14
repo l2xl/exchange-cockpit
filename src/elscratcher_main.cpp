@@ -50,6 +50,9 @@ int main(int argc, char* argv[])
         window.SetOnPanelClosed([&cockpit](scratcher::cockpit::panel_id pid) {
             cockpit->UnregisterPanel(pid);
         });
+        window.SetDataControllerAccessor([&cockpit]() {
+            return cockpit->GetDataController();
+        });
 
         return window.Run();
     }

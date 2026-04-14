@@ -20,7 +20,7 @@ namespace scratcher::cockpit {
 
 using panel_id = size_t;
 
-enum class PanelType { MarketGraph, OrderBook, Orders, TradeHistory };
+enum class PanelType { MarketGraph, OrderBook, Orders, TradeHistory, NewOrder, TradeStats, Positions, Watchlist };
 
 std::string PanelTypeName(PanelType type);
 

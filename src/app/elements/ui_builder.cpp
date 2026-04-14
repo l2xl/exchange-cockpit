@@ -33,6 +33,10 @@ const PanelType all_panel_types[] = {
     PanelType::OrderBook,
     PanelType::Orders,
     PanelType::TradeHistory,
+    PanelType::NewOrder,
+    PanelType::TradeStats,
+    PanelType::Positions,
+    PanelType::Watchlist,
 };
 
 class AutoPositionMenu : public el::basic_button_menu
@@ -166,11 +170,115 @@ el::element_ptr UiBuilder::MakePanelTypeSelector(
     return popup;
 }
 
+InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
+    std::function<void(PanelType)> onChangeType,
+    std::function<void(PanelType, SplitDirection)> onSplit)
+{
+    InstrumentPanelWidgets w;
+
+    auto titleLabel = el::share(el::label("Select instrument").font_size(12).font_color(label_text_color));
+
+    auto instrumentBtn = el::share(
+        el::momentary_button<AutoPositionMenu>(
+            el::margin({6, 2, 6, 2},
+                el::htile(
+                    el::label("Instrument").font_size(12).font_color(dim_text_color),
+                    el::hspace(4),
+                    el::icon(el::icons::down_dir, 0.7f)
+                )
+            )
+        )
+    );
+
+    {
+        el::vtile_composite placeholder;
+        auto item = el::menu_item("Loading...");
+        placeholder.push_back(el::share(std::move(item)));
+        instrumentBtn->menu(
+            el::layer(
+                el::vtile(std::move(placeholder)),
+                el::panel{}
+            )
+        );
+    }
+
+    w.SetInstruments = [instrumentBtn](const std::vector<std::string>& symbols, std::function<void(std::string)> onSelect) {
+        el::vtile_composite items;
+        for (const auto& sym : symbols) {
+            auto item = el::menu_item(sym);
+            std::string captured = sym;
+            item.on_click = [onSelect, captured]() {
+                if (onSelect) onSelect(captured);
+            };
+            items.push_back(el::share(std::move(item)));
+        }
+        instrumentBtn->menu(
+            el::layer(
+                el::vtile(std::move(items)),
+                el::panel{}
+            )
+        );
+    };
+
+    w.SetTitle = [titleLabel](const std::string& text) {
+        titleLabel->set_text(text);
+    };
+
+    auto header = el::share(
+        el::layer(
+            el::margin({2, 1, 2, 1},
+                el::htile(
+                    el::hold(MakePanelTypeSelector(el::icons::down_dir, std::move(onChangeType))),
+                    el::hspace(4),
+                    el::hold(instrumentBtn),
+                    el::hspace(8),
+                    el::hstretch(1.0,
+                        el::align_center(el::hold(titleLabel))
+                    ),
+                    el::hold(MakePanelTypeSelector(el::icons::plus, [onSplit](PanelType t) {
+                        if (onSplit) onSplit(t, SplitDirection::Vertical);
+                    }))
+                )
+            ),
+            el::box(header_bg_color)
+        )
+    );
+
+    w.workArea = std::make_shared<el::deck_composite>();
+    w.workArea->push_back(
+        el::share(
+            el::layer(
+                el::align_center_middle(
+                    el::label("No instrument selected").font_size(14).font_color(dim_text_color)
+                ),
+                el::box(content_bg_color)
+            )
+        )
+    );
+    w.workArea->select(0);
+
+    auto content = el::share(
+        el::vtile(
+            el::hold(header),
+            el::vstretch(1.0, el::hold(w.workArea)),
+            el::hold(MakePanelFooter(std::move(onSplit)))
+        )
+    );
+
+    w.overlayDeck = std::make_shared<el::deck_composite>();
+    w.overlayDeck->push_back(MakeWaitingIndicator());
+    w.overlayDeck->push_back(std::move(content));
+    w.overlayDeck->select(0);
+
+    w.root = el::share(el::hold(w.overlayDeck));
+
+    return w;
+}
+
 std::pair<el::element_ptr, std::shared_ptr<el::deck_composite>> UiBuilder::MakePanel(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void(PanelType, SplitDirection)> onSplit)
 {
     auto deck = std::make_shared<el::deck_composite>();
     deck->push_back(MakeWaitingIndicator());
-    deck->push_back(MakePanelContent(type));
     deck->select(0);
 
     auto root = el::share(
@@ -269,18 +377,5 @@ el::element_ptr UiBuilder::MakeWaitingIndicator()
     );
 }
 
-el::element_ptr UiBuilder::MakePanelContent(PanelType type)
-{
-    return el::share(
-        el::layer(
-            el::align_center_middle(
-                el::label(PanelTypeName(type))
-                    .font_size(24)
-                    .font_color(dim_text_color)
-            ),
-            el::box(content_bg_color)
-        )
-    );
-}
 
 } // namespace scratcher::elements

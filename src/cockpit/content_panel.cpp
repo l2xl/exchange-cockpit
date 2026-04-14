@@ -22,6 +22,10 @@ std::string PanelTypeName(PanelType type)
     case PanelType::OrderBook:    return "Order Book";
     case PanelType::Orders:       return "Orders";
     case PanelType::TradeHistory: return "Trade History";
+    case PanelType::NewOrder:     return "New Order";
+    case PanelType::TradeStats:   return "Trade Stats";
+    case PanelType::Positions:    return "Positions";
+    case PanelType::Watchlist:    return "Watchlist";
     }
     return "Unknown";
 }

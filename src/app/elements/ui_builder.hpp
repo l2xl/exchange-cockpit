@@ -15,6 +15,8 @@
 
 #include <memory>
 #include <functional>
+#include <string>
+#include <vector>
 
 #include <elements.hpp>
 #include "content_panel.hpp"
@@ -22,14 +24,23 @@
 
 namespace scratcher::elements {
 
+struct InstrumentPanelWidgets
+{
+    cycfi::elements::element_ptr root;
+    std::shared_ptr<cycfi::elements::deck_composite> overlayDeck;
+    std::shared_ptr<cycfi::elements::deck_composite> workArea;
+    std::function<void(const std::vector<std::string>&, std::function<void(std::string)>)> SetInstruments;
+    std::function<void(const std::string&)> SetTitle;
+};
+
 class UiBuilder
 {
 public:
     using PanelWidgets = std::pair<cycfi::elements::element_ptr, std::shared_ptr<cycfi::elements::deck_composite>>;
 
-    cycfi::elements::element_ptr MakeAppBar(cycfi::elements::element_ptr tab_bar_area,
-                                            cycfi::elements::element_ptr menu_items,
-                                            std::function<void(bool)> onHamburger);
+    InstrumentPanelWidgets MakeInstrumentPanel(cockpit::PanelType type, std::function<void(cockpit::PanelType)> onChangeType, std::function<void(cockpit::PanelType, SplitDirection)> onSplit);
+
+    cycfi::elements::element_ptr MakeAppBar(cycfi::elements::element_ptr tab_bar_area, cycfi::elements::element_ptr menu_items, std::function<void(bool)> onHamburger);
 
     cycfi::elements::element_ptr MakeMenuItems(std::function<void()> onExit);
     cycfi::elements::element_ptr MakeLoadingSpinner();
@@ -46,7 +57,6 @@ private:
     cycfi::elements::element_ptr MakePanelHeader(cockpit::PanelType type, std::function<void(cockpit::PanelType)> onChangeType, std::function<void(cockpit::PanelType, SplitDirection)> onSplit);
     cycfi::elements::element_ptr MakePanelFooter(std::function<void(cockpit::PanelType, SplitDirection)> onSplit);
     cycfi::elements::element_ptr MakeWaitingIndicator();
-    cycfi::elements::element_ptr MakePanelContent(cockpit::PanelType type);
 };
 
 } // namespace scratcher::elements

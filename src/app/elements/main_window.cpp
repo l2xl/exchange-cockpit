@@ -12,6 +12,7 @@
 // -----END PGP PUBLIC KEY BLOCK-----
 
 #include "main_window.hpp"
+#include "elements_instrument_panel.hpp"
 
 namespace scratcher::elements {
 
@@ -99,6 +100,11 @@ void MainWindow::SetOnPanelClosed(on_panel_closed_t handler)
     mOnPanelClosed = std::move(handler);
 }
 
+void MainWindow::SetDataControllerAccessor(data_controller_accessor_t accessor)
+{
+    mDataControllerAccessor = std::move(accessor);
+}
+
 void MainWindow::SetupContent()
 {
     mTabBar = std::make_unique<TabBar>(mView);
@@ -156,9 +162,21 @@ std::shared_ptr<LeafPanelNode> MainWindow::MakeLeaf(PanelType type)
         if (auto n = w.lock()) HandleSplit(n, newType, dir);
     };
 
-    auto [element, deck] = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onSplit));
+    std::shared_ptr<cockpit::ContentPanel> panel;
+    el::element_ptr element;
 
-    auto panel = std::make_shared<ElementsContentPanel>(type, mView, std::move(deck));
+    const bool instrumentBased = (type == PanelType::MarketGraph || type == PanelType::OrderBook);
+
+    if (instrumentBased && mDataControllerAccessor) {
+        auto widgets = mBuilder.MakeInstrumentPanel(type, std::move(onChangeType), std::move(onSplit));
+        element = widgets.root;
+        std::weak_ptr<IDataController> ctl = mDataControllerAccessor();
+        panel = ElementsInstrumentPanel::Create(type, mView, std::move(ctl), std::move(widgets));
+    } else {
+        auto [elem, deck] = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onSplit));
+        element = std::move(elem);
+        panel = std::make_shared<ElementsContentPanel>(type, mView, std::move(deck));
+    }
 
     panel_id pid = 0;
     if (mOnPanelCreated)

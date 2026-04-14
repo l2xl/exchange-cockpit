@@ -23,6 +23,7 @@
 #include "tab_bar.hpp"
 #include "panel_node.hpp"
 #include "ui_builder.hpp"
+#include "data_controller.hpp"
 
 namespace scratcher::elements {
 
@@ -31,6 +32,7 @@ class MainWindow
 public:
     using on_panel_created_t = std::function<cockpit::panel_id(std::shared_ptr<cockpit::ContentPanel>)>;
     using on_panel_closed_t = std::function<void(cockpit::panel_id)>;
+    using data_controller_accessor_t = std::function<std::shared_ptr<IDataController>()>;
 
     explicit MainWindow(UiBuilder& builder);
     ~MainWindow();
@@ -39,6 +41,7 @@ public:
 
     void SetOnPanelCreated(on_panel_created_t handler);
     void SetOnPanelClosed(on_panel_closed_t handler);
+    void SetDataControllerAccessor(data_controller_accessor_t accessor);
 
 private:
     void SetupContent();
@@ -58,6 +61,7 @@ private:
 
     on_panel_created_t mOnPanelCreated;
     on_panel_closed_t mOnPanelClosed;
+    data_controller_accessor_t mDataControllerAccessor;
 
     std::unique_ptr<TabBar> mTabBar;
 

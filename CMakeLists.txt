@@ -189,12 +189,14 @@ add_executable(elscratcher
             src/app/elements/split_direction.hpp
             src/cockpit/content_panel.hpp
             src/cockpit/content_panel.cpp
+            src/cockpit/instrument_panel.hpp
+            src/cockpit/instrument_panel.cpp
+            src/app/elements/elements_instrument_panel.hpp
+            src/app/elements/elements_instrument_panel.cpp
             src/app/elements/tab_bar.hpp
             src/app/elements/tab_bar.cpp
             src/app/elements/panel_node.hpp
             src/app/elements/panel_node.cpp
-            src/app/elements/panels/panel_content.hpp
-            src/app/elements/panels/panel_content.cpp
             src/cockpit/trade_cockpit.hpp
             src/cockpit/trade_cockpit.cpp
             src/config.hpp

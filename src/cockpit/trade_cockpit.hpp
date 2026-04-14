@@ -53,6 +53,8 @@ public:
 
     panel_id RegisterPanel(std::shared_ptr<ContentPanel> panel);
     void UnregisterPanel(panel_id pid);
+
+    std::shared_ptr<IDataController> GetDataController() const { return mDataManager; }
 };
 
 } // namespace scratcher::cockpit
