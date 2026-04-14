@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BUILD_DIR = PROJECT_ROOT / "cmake-build-debug-clang-19"
+BUILD_DIR = PROJECT_ROOT / "cmake-build-debug-clang"
 BUILD_LOG = BUILD_DIR / "build.log"
 
 CMAKE_CONFIGURE_ARGS = [
@@ -16,8 +16,8 @@ CMAKE_CONFIGURE_ARGS = [
     "-B", str(BUILD_DIR),
     "-G", "Ninja",
     "-DCMAKE_BUILD_TYPE=Debug",
-    "-DCMAKE_C_COMPILER=/usr/bin/clang-19",
-    "-DCMAKE_CXX_COMPILER=/usr/bin/clang++-19",
+    "-DCMAKE_C_COMPILER=/usr/bin/clang-23",
+    "-DCMAKE_CXX_COMPILER=/usr/bin/clang++-23",
 ]
 
 

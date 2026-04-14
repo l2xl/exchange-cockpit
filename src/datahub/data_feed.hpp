@@ -95,7 +95,7 @@ public:
                 update_kind update = update_kind::increment;
                 auto first_update_it = self->m_cache.end();
                 if (self->m_cache.empty()) {
-                    self->m_cache = std::move(incoming | std::ranges::to<cache_type>());
+                    self->m_cache = std::ranges::to<cache_type>(incoming);
                     update = update_kind::snapshot;
                     inserted = self->m_cache.size();
                 }
@@ -201,7 +201,7 @@ public:
 
                 size_t inserted = 0;
                 if (self->m_cache.empty()) {
-                    self->m_cache = std::move(incoming | std::ranges::to<cache_type>());
+                    self->m_cache = std::ranges::to<cache_type>(incoming);
                     inserted = self->m_cache.size();
                 }
                 else {
