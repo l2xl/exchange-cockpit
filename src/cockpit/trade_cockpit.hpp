@@ -18,6 +18,7 @@
 #include <memory>
 #include <deque>
 
+#include <boost/asio/awaitable.hpp>
 #include <boost/container/flat_map.hpp>
 
 #include "scheduler.hpp"
@@ -45,6 +46,8 @@ private:
     struct EnsurePrivate {};
 
     void OnInstrumentsLoaded();
+
+    static boost::asio::awaitable<void> coUpdate(std::weak_ptr<TradeCockpit> ref);
 
 public:
     TradeCockpit(std::shared_ptr<scheduler> sched, std::shared_ptr<IExchangeConfig> config, std::shared_ptr<SQLite::Database> db, EnsurePrivate);

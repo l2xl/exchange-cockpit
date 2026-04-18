@@ -13,6 +13,15 @@
 
 #include "trade_cockpit.hpp"
 
+#include <chrono>
+#include <optional>
+
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/detached.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/use_awaitable.hpp>
+#include <boost/system/error_code.hpp>
+
 namespace scratcher::cockpit {
 
 TradeCockpit::TradeCockpit(std::shared_ptr<scheduler> sched, std::shared_ptr<IExchangeConfig> config, std::shared_ptr<SQLite::Database> db, EnsurePrivate)
@@ -33,7 +42,35 @@ std::shared_ptr<TradeCockpit> TradeCockpit::Create(std::shared_ptr<scheduler> sc
 
     self->mDataManager->SubscribeInstrumentList(self->mInstrumentSub);
 
+    boost::asio::co_spawn(self->mScheduler->io(), coUpdate(self), boost::asio::detached);
+
     return self;
+}
+
+boost::asio::awaitable<void> TradeCockpit::coUpdate(std::weak_ptr<TradeCockpit> ref)
+{
+    using namespace std::chrono;
+    while (true) {
+        try {
+            std::optional<boost::asio::steady_timer> timer;
+            if (auto self = ref.lock()) {
+                for (auto& [pid, panel] : self->mPanels) panel->Update();
+                timer.emplace(self->mScheduler->io(), milliseconds(1000));
+            } else {
+                break;
+            }
+            if (timer) {
+                timer->expires_after(milliseconds(100));
+                co_await timer->async_wait(boost::asio::use_awaitable);
+            } else {
+                break;
+            }
+        }
+        catch (boost::system::error_code& e) {
+            if (e.value() == boost::asio::error::operation_aborted) break;
+        }
+        catch (const std::exception&) {}
+    }
 }
 
 panel_id TradeCockpit::RegisterPanel(std::shared_ptr<ContentPanel> panel)

@@ -22,6 +22,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <boost/asio.hpp>
+#include <boost/asio/experimental/channel.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
@@ -64,6 +65,13 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
 
     std::shared_ptr<websocket_stream> m_websocket;
 
+    // Outbound payload channel — single producer-consumer rendezvous between message
+    // producers (operator() / heartbeat) and the lone send loop. Boost.Beast forbids
+    // overlapping write_some_op initiations on the same stream, so all writes flow
+    // through co_send_loop, which drains this channel one item at a time.
+    using send_channel_t = boost::asio::experimental::channel<void(boost::system::error_code, std::string)>;
+    send_channel_t m_send_channel;
+
     // Heartbeat management
     std::function<std::string(size_t)> m_make_heartbeat_mesage = [](size_t){ return std::string{}; };
     std::shared_ptr<boost::asio::steady_timer> m_heartbeat_timer;
@@ -76,7 +84,8 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
     static boost::asio::awaitable<void> co_exec_loop(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_open(std::shared_ptr<websock_connection>);
     static boost::asio::awaitable<std::string> co_read(std::weak_ptr<websock_connection>);
-    static boost::asio::awaitable<void> co_message(std::shared_ptr<websock_connection>, std::string message);
+    static boost::asio::awaitable<void> co_send_loop(std::weak_ptr<websock_connection>);
+    static boost::asio::awaitable<void> co_enqueue(std::shared_ptr<websock_connection>, std::string payload);
 
 public:
     explicit websock_connection(std::shared_ptr<context> context, const std::string& url);
@@ -110,6 +119,7 @@ public:
         };
 
         boost::asio::co_spawn(ws->m_strand, co_exec_loop(ws), ws->m_common_handler);
+        boost::asio::co_spawn(ws->m_strand, co_send_loop(ws), ws->m_common_handler);
         boost::asio::co_spawn(ws->m_strand, co_heartbeat_loop(ws), ws->m_common_handler);
 
         return ws;

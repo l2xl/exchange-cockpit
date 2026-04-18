@@ -33,6 +33,7 @@ public:
     PanelType Type() const { return mType; }
 
     virtual void SetDataReady(bool ready) = 0;
+    virtual void Update() {}
 
 private:
     PanelType mType;

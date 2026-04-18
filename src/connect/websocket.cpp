@@ -27,6 +27,7 @@ namespace this_coro =  boost::asio::this_coro;
 websock_connection::websock_connection(std::shared_ptr<context> ctx, const std::string& url)
     : m_context(ctx)
     , m_strand(make_strand(ctx->io()))
+    , m_send_channel(m_strand, 64)
     , m_heartbeat_timer(std::make_shared<boost::asio::steady_timer>(m_strand, std::chrono::steady_clock::time_point::max()))
     , m_last_heartbeat(std::chrono::steady_clock::time_point::min())
 {
@@ -62,70 +63,129 @@ void websock_connection::set_heartbeat(std::chrono::seconds seconds, std::functi
 
 void websock_connection::operator()(std::string message)
 {
-    co_spawn(m_strand, co_message(shared_from_this(), std::move(message)), m_common_handler);
+    co_spawn(m_strand, co_enqueue(shared_from_this(), std::move(message)), m_common_handler);
+}
+
+boost::asio::awaitable<void> websock_connection::co_enqueue(std::shared_ptr<websock_connection> self, std::string payload)
+{
+    try {
+        co_await self->m_send_channel.async_send(boost::system::error_code{}, std::move(payload), use_awaitable);
+    }
+    catch (boost::system::system_error& e) {
+        self->m_status = status::STALE;
+        std::cerr << "WebSocket send-channel failed: " << e.what() << std::endl;
+    }
+    catch (std::exception& e) {
+        self->m_status = status::STALE;
+        std::cerr << "WebSocket send-channel failed: " << e.what() << std::endl;
+    }
+    catch (...) {
+        self->m_status = status::STALE;
+        std::cerr << "WebSocket send-channel failed (unknown error)" << std::endl;
+    }
 }
 
 boost::asio::awaitable<void> websock_connection::co_heartbeat_loop(std::weak_ptr<websock_connection> ref)
 {
     std::shared_ptr<boost::asio::steady_timer> heartbeat_timer;
-    status cur_status = status::INIT;
     if (auto self = ref.lock()) {
-        cur_status = self->m_status;
         heartbeat_timer = self->m_heartbeat_timer;
     }
     else co_return;
 
-    while (cur_status != status::STALE) {
+    while (true) {
         try {
+            co_await heartbeat_timer->async_wait(use_awaitable);
+
             if (auto self = ref.lock()) {
-                // Check if we need to send heartbeat
-                auto now = std::chrono::steady_clock::now();
+                if (self->m_status == status::STALE) co_return;
 
-                if (now > heartbeat_timer->expiry()) {
-                    // Generate heartbeat message
-                    std::string heartbeat_message = self->m_make_heartbeat_mesage(++self->m_request_counter);
-
-                    if (heartbeat_message.empty()) {
-                        std::cerr << "Empty heartbeat message!" << std::endl;
-                        throw std::invalid_argument("WebSocket heartbeat failed due to empty heartbeat message");
-                    }
-
-                    co_await self->m_websocket->async_write(boost::asio::buffer(heartbeat_message), use_awaitable);
-
-                    self->m_last_heartbeat = now;
+                std::string ping = self->m_make_heartbeat_mesage(++self->m_request_counter);
+                if (!ping.empty()) {
+                    co_await co_enqueue(self, std::move(ping));
+                }
+                if (self->m_heartbeat_interval.count() > 0) {
                     heartbeat_timer->expires_after(self->m_heartbeat_interval);
                 }
-
-                self.reset();
             }
-            else break;
+            else co_return;
+        }
+        catch (boost::system::system_error& e) {
+            std::cerr << "Heartbeat error: " << e.what() << std::endl;
+        }
+        catch (std::exception& e) {
+            std::cerr << "Heartbeat error: " << e.what() << std::endl;
+        }
+        catch (...) {
+            std::cerr << "Heartbeat unknown error" << std::endl;
+        }
+    }
+}
+
+boost::asio::awaitable<void> websock_connection::co_send_loop(std::weak_ptr<websock_connection> ref)
+{
+    namespace this_coro = boost::asio::this_coro;
+
+    while (true) {
+        std::string payload;
+        try {
+            send_channel_t* channel = nullptr;
+            if (auto self = ref.lock()) {
+                if (self->m_status == status::STALE) co_return;
+                channel = &self->m_send_channel;
+            }
+            else co_return;
+
+            auto [ec, msg] = co_await channel->async_receive(boost::asio::as_tuple(use_awaitable));
+            if (ec) co_return;
+            payload = std::move(msg);
+        }
+        catch (...) {
+            co_return;
+        }
+
+        // Wait for the websocket to come up before draining the first payload.
+        for (;;) {
+            auto self = ref.lock();
+            if (!self) co_return;
+            if (self->m_status == status::STALE) co_return;
+            if (self->m_status == status::READY) break;
+
+            boost::asio::steady_timer wait(co_await this_coro::executor, std::chrono::milliseconds(50));
+            self.reset();
+            co_await wait.async_wait(use_awaitable);
+        }
+
+        try {
+            std::shared_ptr<websocket_stream> stream;
+            if (auto self = ref.lock()) {
+                std::clog << "WebSocket write: " << payload << " ... " << std::flush;
+                stream = self->m_websocket;
+            }
+            else co_return;
+
+            co_await stream->async_write(boost::asio::buffer(payload), use_awaitable);
+
+            if (auto self = ref.lock()) {
+                std::clog << "ok" << std::endl;
+                self->m_last_heartbeat = std::chrono::steady_clock::now();
+            }
+            else co_return;
         }
         catch (boost::system::error_code& ec) {
             if (auto self = ref.lock()) {
                 self->m_status = status::STALE;
-                std::cerr << "Heartbeat error: " << ec.message() << std::endl;
-                heartbeat_timer->expires_after(std::chrono::steady_clock::duration::max());
+                std::cerr << "WebSocket write error: " << ec.message() << std::endl;
             }
-            else break;
+            co_return;
         }
         catch (std::exception& e) {
             if (auto self = ref.lock()) {
                 self->m_status = status::STALE;
-                std::cerr << "Heartbeat unexpected error: " << e.what() << std::endl;
-                heartbeat_timer->expires_after(std::chrono::steady_clock::duration::max());
+                std::cerr << "WebSocket write unknown error: " << e.what() << std::endl;
             }
-            else break;
+            co_return;
         }
-        catch (...) {
-            if (auto self = ref.lock()) {
-                self->m_status = status::STALE;
-                std::cerr << "Heartbeat unknown error" << std::endl;
-                heartbeat_timer->expires_after(std::chrono::steady_clock::duration::max());
-            }
-            else break;
-        }
-
-        co_await heartbeat_timer->async_wait(use_awaitable);
     }
 }
 
@@ -271,47 +331,6 @@ boost::asio::awaitable<std::string> websock_connection::co_read(std::weak_ptr<we
     }
 
     co_return std::string{};
-}
-
-boost::asio::awaitable<void> websock_connection::co_message(std::shared_ptr<websock_connection> self, std::string message)
-{
-    namespace this_coro = boost::asio::this_coro;
-    
-    try {
-        if (self->m_status == status::INIT) {
-            boost::asio::steady_timer local_timer(co_await this_coro::executor, std::chrono::milliseconds(50));
-            while (self->m_status == status::INIT) {
-                co_await local_timer.async_wait(use_awaitable);
-            }
-        }
-
-        if (self->m_status != status::READY) {
-            co_return;
-        }
-
-        std::clog << "WebSocket write: " << message << " ... " << std::flush;
-
-        co_await self->m_websocket->async_write(boost::asio::buffer(message), use_awaitable);
-
-        std::clog << "ok" << std::endl;
-        self->m_last_heartbeat = std::chrono::steady_clock::now();
-    }
-    catch (boost::system::error_code& ec) {
-        self->m_status = status::STALE;
-        std::cerr << "WebSocket write error: " << ec.message() << std::endl;
-        std::rethrow_exception(std::current_exception());
-
-    }
-    catch (std::exception& e) {
-        self->m_status = status::STALE;
-        std::cerr << "WebSocket write unknown error: " << e.what() << std::endl;
-        std::rethrow_exception(std::current_exception());
-    }
-    catch (...) {
-        self->m_status = status::STALE;
-        std::cerr << "WebSocket write unknown error" << std::endl;
-        throw std::runtime_error("WebSocket write unknown error");
-    }
 }
 
 } // namespace scratcher::connect

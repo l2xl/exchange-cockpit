@@ -25,6 +25,8 @@
 
 namespace scratcher::elements {
 
+class ScratchPanel;
+
 class ElementsInstrumentPanel : public cockpit::InstrumentPanel
 {
     struct EnsurePrivate {};
@@ -35,6 +37,7 @@ public:
     static std::shared_ptr<ElementsInstrumentPanel> Create(cockpit::PanelType type, std::weak_ptr<cycfi::elements::view> view, std::weak_ptr<IDataController> controller, InstrumentPanelWidgets widgets);
 
     void SetDataReady(bool ready) override;
+    void Update() override;
 
 protected:
     void PostToUi(std::function<void()> fn) override;
@@ -44,6 +47,7 @@ protected:
 private:
     std::weak_ptr<cycfi::elements::view> mView;
     InstrumentPanelWidgets mWidgets;
+    std::weak_ptr<ScratchPanel> mScratchPanel;
 };
 
 } // namespace scratcher::elements

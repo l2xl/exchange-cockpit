@@ -150,6 +150,18 @@ set(core_SOURCES
         src/datahub/data_subscription.hpp
         src/datahub/data_feed.hpp
         src/datahub/data_condition.hpp
+        src/cockpit/pixel_rect.hpp
+        src/cockpit/chart_panel.hpp
+        src/cockpit/scratcher.hpp
+        src/cockpit/scratchers/quote_scratcher.hpp
+        src/cockpit/scratchers/quote_scratcher.cpp
+        src/cockpit/scratchers/time_ruler.hpp
+        src/cockpit/scratchers/time_ruler.cpp
+        src/cockpit/scratchers/price_ruler.hpp
+        src/cockpit/scratchers/price_ruler.cpp
+        src/cockpit/scratchers/price_indicator.hpp
+        src/cockpit/scratchers/margin.hpp
+        src/cockpit/scratchers/margin.cpp
 )
 
 add_library(core STATIC ${core_SOURCES})
@@ -202,6 +214,20 @@ add_executable(elscratcher
             src/app/elements/panel_node.cpp
             src/cockpit/trade_cockpit.hpp
             src/cockpit/trade_cockpit.cpp
+            src/app/elements/cairo_skia_bridge.hpp
+            src/app/elements/cairo_skia_bridge.cpp
+            src/app/elements/default_typeface.hpp
+            src/app/elements/default_typeface.cpp
+            src/app/elements/scratch_panel.hpp
+            src/app/elements/scratch_panel.cpp
+            src/app/elements/time_ruler.hpp
+            src/app/elements/time_ruler.cpp
+            src/app/elements/price_ruler.hpp
+            src/app/elements/price_ruler.cpp
+            src/app/elements/quote_scratcher.hpp
+            src/app/elements/quote_scratcher.cpp
+            src/app/elements/price_indicator.hpp
+            src/app/elements/price_indicator.cpp
             src/config.hpp
             src/config.cpp
     )
@@ -231,6 +257,7 @@ include_directories(
         src/connect
         src/core
         src/app
+        src/app/elements
         src/cockpit
         src/data
         src/data/entities
