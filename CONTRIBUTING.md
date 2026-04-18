@@ -1,62 +1,43 @@
 # The Exchange Scratchpad Components
 
-## Data Pipeline `@src/datahub/README.md`
+## Data Pipeline
 
 Project exclusively uses the internally developed `datahub` library to automate data pipelines. Any other ways to organize data flow are forbidden.
 
-## Data Model `@src/data/README.md`
+For any work involving the `datahub` component — using its API, extending the pipeline, or modifying its internals — see [src/datahub/README.md](src/datahub/README.md).
 
-Data model is managed by the data entity types and per data provider implementations derived from `IDataController` interface.
+## Connection Abstraction
 
-## Data Sources `@src/connect/README.md`
+The Data Pipeline begins from one or a number of data sources. The project uses a thin abstraction over boost/beast called `connect` to implement communication over network. The `connect` library is also used to send any requests/data over the network.
 
-Project uses thin abstraction over boost/beast library to implement communication over network.
+For any work involving the `connect` component — opening HTTP queries or WebSocket connections, handling transport errors, or modifying the abstraction — see [src/connect/README.md](src/connect/README.md).
 
-## Trader Cockpit `@src/cockpit/README.md`
+## Data Model
 
-User Experience management is implemented by the central Exchange Scratchpad component - `The Trader Cockpit`.
+The data model is the main Data Pipeline parameter. It is defined by entity types and per-provider implementations derived from the `IDataController` interface.
 
-## Application layer `@src/app/README.md`
+For any work involving data entities, `IDataController` implementations, or persistence — using, extending, or modifying them — see [src/data/README.md](src/data/README.md).
 
-Application lifecycle management and UI implementation
+## Trader Cockpit
 
-## Tests `@test/README.md`
+User experience is orchestrated by the central Exchange Scratchpad component — `The Trader Cockpit`.
+
+For any work involving `TradeCockpit`, `ContentPanel`, or panel registration and data routing — using, extending, or modifying them — see [src/cockpit/README.md](src/cockpit/README.md).
+
+## Application layer
+
+Application lifecycle management and UI implementation.
+
+For any work involving application startup, panel tree nodes, `UiBuilder`, or UI-engine-specific panel implementations — using, extending, or modifying them — see [src/app/README.md](src/app/README.md).
+
+## Tests
 
 Catch2 v3 test suite with per-component test executables mirroring the src/ layout.
+
+For any work involving tests — adding a new test executable, modifying existing tests, or running a single test — see [test/README.md](test/README.md).
 
 ## Other components
 
 * `common` - common utilities
-* `core` - core library (BOOST ASIO-based task scheduler for now)
+* `core` - core library (BOOST ASIO-based task scheduler for now) and generic_handler callback implementation helper
 
-# Build instructions `@BUILD.md`
-
-# Legacy Project Structure (deprecated, keep for reference)
-
-### Widget Layer (`src/widget/`)
-
-Qt-based visualization components.
-
-**Key Classes:**
-- `ContentFrameWidget` - universal container for dynamic panels
-- `DataScratchWidget` - Main QWidget canvas with coordinate transformation
-- `Scratcher` - Abstract renderer base class
-- `QuoteScratcher` - Renders candlesticks/trades
-- `TimeRuler`, `PriceRuler` - Axis renderers
-- `PriceIndicator` - Current price line
-
-**Observer Pattern:** `m_data_view_listeners` for view change notifications
-
-### Application Layer (`src/app/`)
-
-Top-level UI orchestration.
-
-**Key Classes:**
-- `TradeCockpitWindow` - Main QMainWindow, manages multiple market panels
-- `MarketViewController` - Per-symbol controller binding IDataController to DataScratchWidget
-- `ViewController` - Abstract base with `Update()` method
-
-**Current Integration Points:**
-- `MarketViewController` holds reference to `IDataController` (ByBitDataManager)
-- Registers handlers with data controller for trade/orderbook updates
-- Manages view rectangle synchronization between widget and data
