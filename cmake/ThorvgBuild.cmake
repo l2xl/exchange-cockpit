@@ -47,22 +47,17 @@ add_custom_command(
     VERBATIM
 )
 
-# Step 3: meson setup (re-runs only when build.ninja is absent)
+# Step 3: meson setup (re-runs when build.ninja is absent — handles `ninja -t clean` which wipes
+# build.ninja but leaves meson's coredata behind, in which case we must `--reconfigure` instead of
+# a fresh setup that would otherwise no-op on "Directory already configured")
 add_custom_command(
     OUTPUT  "${THORVG_NINJA_FILE}"
     DEPENDS "${THORVG_VENV_STAMP}"
-    COMMAND "${THORVG_MESON}" setup "${THORVG_BUILD_DIR}" "${thorvg_SOURCE_DIR}"
-            --buildtype=release
-            --default-library=static
-            -Dengines=cpu
-            -Dloaders=
-            -Dsavers=
-            -Dbindings=
-            -Dtools=
-            -Dextra=
-            -Dthreads=false
-            -Dtests=false
-            -Dlog=false
+    COMMAND ${CMAKE_COMMAND}
+            -DMESON=${THORVG_MESON}
+            -DBUILD_DIR=${THORVG_BUILD_DIR}
+            -DSRC_DIR=${thorvg_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_LIST_DIR}/ThorvgConfigure.cmake"
     COMMENT "Configuring ThorVG (meson setup)..."
     VERBATIM
 )
