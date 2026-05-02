@@ -8,7 +8,7 @@ For any work involving the `datahub` component — using its API, extending the 
 
 ## Connection Abstraction
 
-The Data Pipeline begins from one or a number of data sources. The project uses a thin abstraction over boost/beast called `connect` to implement communication over network. The `connect` library is also used to send any requests/data over the network.
+The Data Pipeline begins from one or a number of data sources. The project uses a thin abstraction library over boost/beast called `connect` to implement communication over network. The `connect` library is also used to send any requests/data over the network.
 
 For any work involving the `connect` component — opening HTTP queries or WebSocket connections, handling transport errors, or modifying the abstraction — see [src/connect/README.md](src/connect/README.md).
 
@@ -40,4 +40,3 @@ For any work involving tests — adding a new test executable, modifying existin
 
 * `common` - common utilities
 * `core` - core library (BOOST ASIO-based task scheduler for now) and generic_handler callback implementation helper
-
