@@ -33,13 +33,13 @@ class TimeRuler final : public Scratcher
 public:
     TimeRuler() = default;
 
-    void OnAttach(InstrumentContentPanel& panel) override;
-    void CalculateSize(InstrumentContentPanel& panel) override;
-    void OnLayout(InstrumentContentPanel& panel) override;
-    void OnDetach(InstrumentContentPanel& panel) override;
+    void OnAttach(InstrumentPanel& panel) override;
+    void CalculateSize(InstrumentPanel& panel) override;
+    void OnLayout(InstrumentPanel& panel) override;
+    void OnDetach(InstrumentPanel& panel) override;
 
 private:
-    void RebuildAll(InstrumentContentPanel& panel);
+    void RebuildAll(InstrumentPanel& panel);
 
     int mReservedHeight = 0;
 

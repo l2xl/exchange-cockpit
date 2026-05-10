@@ -57,18 +57,18 @@ void EmitBuoy(tvg::Scene& scene, uint64_t buoy_ts, uint64_t duration,
 
 }
 
-void QuoteScratcher::OnAttach(InstrumentContentPanel& panel)
+void QuoteScratcher::OnAttach(InstrumentPanel& panel)
 {
     mScene.reset(tvg::Scene::gen());
     panel.LogicalScene().add(mScene.get());
 }
 
-void QuoteScratcher::OnDetach(InstrumentContentPanel& /*panel*/)
+void QuoteScratcher::OnDetach(InstrumentPanel& /*panel*/)
 {
     mScene.reset();
 }
 
-void QuoteScratcher::OnLayout(InstrumentContentPanel& panel)
+void QuoteScratcher::OnLayout(InstrumentPanel& panel)
 {
     if (!mScene) return;
     mScene->remove();

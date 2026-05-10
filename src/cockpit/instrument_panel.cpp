@@ -20,6 +20,12 @@ namespace scratcher::cockpit {
 
 namespace {
 
+inline int64_t MonotonicNs() noexcept
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 class ThorvgRuntime
 {
 public:
@@ -93,17 +99,17 @@ bool LoadDefaultFont()
 
 }
 
-InstrumentContentPanel::ThorvgRuntimeRef::ThorvgRuntimeRef()
+InstrumentPanel::ThorvgRuntimeRef::ThorvgRuntimeRef()
 {
     ThorvgRuntime::Instance().Acquire();
 }
 
-InstrumentContentPanel::ThorvgRuntimeRef::~ThorvgRuntimeRef()
+InstrumentPanel::ThorvgRuntimeRef::~ThorvgRuntimeRef()
 {
     ThorvgRuntime::Instance().Release();
 }
 
-InstrumentContentPanel::InstrumentContentPanel(PanelType type, seconds candle_period, uint32_t candle_width_pixels)
+InstrumentPanel::InstrumentPanel(PanelType type, seconds candle_period, uint32_t candle_width_pixels)
     : ContentPanel(type)
     , mRuntime{}
     , mCanvas{tvg::SwCanvas::gen()}
@@ -146,7 +152,7 @@ InstrumentContentPanel::InstrumentContentPanel(PanelType type, seconds candle_pe
                                           0.0f,      0.0f, 1.0f});
 }
 
-InstrumentContentPanel::~InstrumentContentPanel()
+InstrumentPanel::~InstrumentPanel()
 {
     // Detach scratchers in reverse-attach order so their dependents (e.g. quote scratcher
     // depending on rulers' inner-rect work) tear down before their dependencies.
@@ -157,7 +163,7 @@ InstrumentContentPanel::~InstrumentContentPanel()
     mScratchers.clear();
 }
 
-void InstrumentContentPanel::SetSceneFloor(SceneFloor floor)
+void InstrumentPanel::SetSceneFloor(SceneFloor floor)
 {
     mSceneFloor = floor;
     // Floor change shifts logical-scene offset, which is a view change — trigger any
@@ -167,7 +173,7 @@ void InstrumentContentPanel::SetSceneFloor(SceneFloor floor)
     }
 }
 
-void InstrumentContentPanel::SetViewLeftTimeMs(std::optional<int64_t> t_ms)
+void InstrumentPanel::SetViewLeftTimeMs(std::optional<int64_t> t_ms)
 {
     mPinnedViewLeftMs = t_ms;
     for (auto& [id, sub] : mSubscriptions) {
@@ -175,26 +181,26 @@ void InstrumentContentPanel::SetViewLeftTimeMs(std::optional<int64_t> t_ms)
     }
 }
 
-InstrumentContentPanel::SubscriptionId InstrumentContentPanel::SubscribeSize(SizeCallback cb)
+InstrumentPanel::SubscriptionId InstrumentPanel::SubscribeSize(SizeCallback cb)
 {
     const SubscriptionId id = mNextSubscriptionId++;
     mSubscriptions[id].on_size = std::move(cb);
     return id;
 }
 
-InstrumentContentPanel::SubscriptionId InstrumentContentPanel::SubscribeView(ViewCallback cb)
+InstrumentPanel::SubscriptionId InstrumentPanel::SubscribeView(ViewCallback cb)
 {
     const SubscriptionId id = mNextSubscriptionId++;
     mSubscriptions[id].on_view = std::move(cb);
     return id;
 }
 
-void InstrumentContentPanel::Unsubscribe(SubscriptionId id)
+void InstrumentPanel::Unsubscribe(SubscriptionId id)
 {
     mSubscriptions.erase(id);
 }
 
-void InstrumentContentPanel::MarkDirty(tvg::Paint* paint)
+void InstrumentPanel::MarkDirty(tvg::Paint* paint)
 {
     if (!paint || mLayoutDirty) return;
 
@@ -210,7 +216,7 @@ void InstrumentContentPanel::MarkDirty(tvg::Paint* paint)
     mDirtyPaints.push_back(std::move(e));
 }
 
-float InstrumentContentPanel::HudXOfTime(int64_t time_ms) const
+float InstrumentPanel::HudXOfTime(int64_t time_ms) const
 {
     // mLogicalScene's matrix is the live source of truth: e11 carries scale (px / ms)
     // and e13 carries the (inner_left - e11 * (view_left - floor)) offset. Reading from
@@ -220,7 +226,7 @@ float InstrumentContentPanel::HudXOfTime(int64_t time_ms) const
     return m.e11 * t_offset + m.e13;
 }
 
-int64_t InstrumentContentPanel::TimeOfHudX(float hud_x) const
+int64_t InstrumentPanel::TimeOfHudX(float hud_x) const
 {
     const tvg::Matrix m = mLogicalScene->transform();
     if (m.e11 == 0.0f) return static_cast<int64_t>(mSceneFloor.time_ms);
@@ -228,7 +234,7 @@ int64_t InstrumentContentPanel::TimeOfHudX(float hud_x) const
     return static_cast<int64_t>(mSceneFloor.time_ms) + static_cast<int64_t>(std::llround(t_offset));
 }
 
-int64_t InstrumentContentPanel::ViewLeftTimeMs() const
+int64_t InstrumentPanel::ViewLeftTimeMs() const
 {
     if (mPinnedViewLeftMs) return *mPinnedViewLeftMs;
 
@@ -245,13 +251,13 @@ int64_t InstrumentContentPanel::ViewLeftTimeMs() const
     return snapped.count();
 }
 
-void InstrumentContentPanel::EnsureViewAnchor()
+void InstrumentPanel::EnsureViewAnchor()
 {
     if (mRightPadPx >= 0) return;
     mRightPadPx = std::max(0, mInnerDataRect.width() * 5 / 100);
 }
 
-void InstrumentContentPanel::ApplyOuterSceneTransforms()
+void InstrumentPanel::ApplyOuterSceneTransforms()
 {
     const float w = static_cast<float>(std::max(0, mCanvasWidth));
     const float h = static_cast<float>(std::max(0, mCanvasHeight));
@@ -267,7 +273,7 @@ void InstrumentContentPanel::ApplyOuterSceneTransforms()
                                      0.0f, 0.0f, 1.0f});
 }
 
-void InstrumentContentPanel::ApplyLogicalSceneTransform()
+void InstrumentPanel::ApplyLogicalSceneTransform()
 {
     const float outer_h = static_cast<float>(std::max(0, mCanvasHeight));
     const float inner_left = static_cast<float>(mInnerDataRect.left);
@@ -302,16 +308,56 @@ void InstrumentContentPanel::ApplyLogicalSceneTransform()
     }
 }
 
-void InstrumentContentPanel::SetTarget(std::span<uint32_t> buffer, uint32_t stride, uint32_t width, uint32_t height)
+void InstrumentPanel::SetTarget(std::span<uint32_t> buffer, uint32_t stride, uint32_t width, uint32_t height)
 {
     mCanvas->target(buffer.data(), stride, width, height, tvg::ColorSpace::ARGB8888);
 }
 
-void InstrumentContentPanel::OnSize(int width, int height)
+void InstrumentPanel::OnSize(int width, int height)
 {
+    // OnSize runs on the UI thread (Cycfi size-allocate). Take mDataMutex blockingly
+    // to serialise against any in-flight worker Update(); skip the throttle because a
+    // resize must always rebuild the layout before the next paint.
+    std::lock_guard lock(mDataMutex);
     mCanvasWidth = width;
     mCanvasHeight = height;
-    mInnerDataRect = PixelRect{0, 0, width, height};
+    DoUpdate();
+}
+
+void InstrumentPanel::Update()
+{
+    // Circuit B: blocking lock for worker threads. The element-layer override
+    // follows up with Refresh() to schedule the UI redraw.
+    std::lock_guard lock(mDataMutex);
+    DoUpdate();
+}
+
+void InstrumentPanel::OnUpdate()
+{
+    // Circuit A: UI-thread paint hook. Two cheap gates before we commit to layout work:
+    //   1) Throttle. If the scene was DoUpdate'd within the throttle window, paints
+    //      arriving in a tight burst skip recomputation entirely.
+    //   2) try_lock. If a worker is mid-DoUpdate we don't stall the paint thread; we
+    //      proceed with the previously-published scene state and Render() picks up
+    //      whatever the worker commits when it releases the lock.
+    const int64_t now = MonotonicNs();
+    if (mUpdateThrottleNs > 0 &&
+        (now - mLastUpdateNs.load(std::memory_order_acquire)) < mUpdateThrottleNs)
+        return;
+
+    std::unique_lock lock(mDataMutex, std::try_to_lock);
+    if (!lock.owns_lock()) return;
+
+    DoUpdate();
+}
+
+void InstrumentPanel::DoUpdate()
+{
+    // PRECONDITION: mDataMutex held. Each ruler's CalculateSize subtracts its reserved
+    // strip from the inner rect, so the rect must be reseeded to the full canvas at
+    // every DoUpdate — otherwise repeated heartbeat ticks keep shrinking it and the
+    // layout collapses toward the upper-left corner.
+    mInnerDataRect = PixelRect{0, 0, mCanvasWidth, mCanvasHeight};
 
     ApplyOuterSceneTransforms();
 
@@ -337,88 +383,108 @@ void InstrumentContentPanel::OnSize(int width, int height)
     // would produce a stale frame. The next Render() will clear and redraw everything.
     mLayoutDirty = true;
     mDirtyPaints.clear();
+
+    mLastUpdateNs.store(MonotonicNs(), std::memory_order_release);
 }
 
-PixelRect InstrumentContentPanel::Render()
+PixelRect InstrumentPanel::Render()
 {
-    if (mLayoutDirty) {
-        // Reset viewport to full canvas — a previous incremental render may have narrowed
-        // it, and ThorVG keeps the last-set viewport across draw cycles unless the target
-        // is reset. Call sequence is fixed: viewport must precede update; see Phase 0
-        // findings in time_ruler_partial_redraw.md.
-        mCanvas->viewport(0, 0, mCanvasWidth, mCanvasHeight);
-        mCanvas->update();
+    // Two-stage lock: viewport+canvas->update() must run under mDataMutex so a worker
+    // mid-DoUpdate cannot mutate paint state during ThorVG's tree walk. Once update()
+    // returns the renderer has buffered the command list internally and subsequent
+    // scene mutations only affect the *next* update(), so we release the lock before
+    // draw()+sync() — letting workers progress while the rasteriser runs.
+    bool   full_redraw = false;
+    PixelRect dmg{};
+
+    {
+        std::lock_guard lock(mDataMutex);
+
+        if (mLayoutDirty) {
+            // Reset viewport to full canvas — a previous incremental render may have
+            // narrowed it, and ThorVG keeps the last-set viewport across draw cycles
+            // unless the target is reset. Call sequence is fixed: viewport must
+            // precede update; see Phase 0 findings in time_ruler_partial_redraw.md.
+            mCanvas->viewport(0, 0, mCanvasWidth, mCanvasHeight);
+            mCanvas->update();
+            mLayoutDirty = false;
+            mDirtyPaints.clear();
+            full_redraw = true;
+        } else {
+            if (mDirtyPaints.empty()) return PixelRect{};
+
+            // Damage union from captured pre-bounds. Inflate-to-pixel-grid keeps every
+            // dirtied sub-pixel covered: floor() the upper-left, ceil() the lower-right,
+            // then clamp to the canvas extent so the viewport call cannot reject an
+            // out-of-range rect.
+            float min_x =  std::numeric_limits<float>::infinity();
+            float min_y =  std::numeric_limits<float>::infinity();
+            float max_x = -std::numeric_limits<float>::infinity();
+            float max_y = -std::numeric_limits<float>::infinity();
+            for (const auto& d : mDirtyPaints) {
+                min_x = std::min(min_x, d.x);
+                min_y = std::min(min_y, d.y);
+                max_x = std::max(max_x, d.x + d.w);
+                max_y = std::max(max_y, d.y + d.h);
+            }
+
+            const int x = std::max(0, static_cast<int>(std::floor(min_x)));
+            const int y = std::max(0, static_cast<int>(std::floor(min_y)));
+            const int r = std::min(mCanvasWidth,  static_cast<int>(std::ceil(max_x)));
+            const int b = std::min(mCanvasHeight, static_cast<int>(std::ceil(max_y)));
+
+            dmg = PixelRect{x, y, r, b};
+            mDirtyPaints.clear();
+            if (dmg.empty()) return PixelRect{};
+
+            mCanvas->viewport(dmg.left, dmg.top, dmg.width(), dmg.height());
+            mCanvas->update();
+        }
+    }
+
+    // Lock released. draw()+sync() touch only the previously-built command buffer.
+    if (full_redraw) {
         mCanvas->draw(true);
         mCanvas->sync();
-        mLayoutDirty = false;
-        mDirtyPaints.clear();
         return PixelRect{0, 0, mCanvasWidth, mCanvasHeight};
     }
-
-    if (mDirtyPaints.empty()) return PixelRect{};
-
-    // Damage union from captured pre-bounds. Inflate-to-pixel-grid keeps every dirtied
-    // sub-pixel covered: floor() the upper-left, ceil() the lower-right, then clamp to
-    // the canvas extent so the viewport call cannot reject an out-of-range rect.
-    float min_x =  std::numeric_limits<float>::infinity();
-    float min_y =  std::numeric_limits<float>::infinity();
-    float max_x = -std::numeric_limits<float>::infinity();
-    float max_y = -std::numeric_limits<float>::infinity();
-    for (const auto& d : mDirtyPaints) {
-        min_x = std::min(min_x, d.x);
-        min_y = std::min(min_y, d.y);
-        max_x = std::max(max_x, d.x + d.w);
-        max_y = std::max(max_y, d.y + d.h);
-    }
-
-    const int x = std::max(0, static_cast<int>(std::floor(min_x)));
-    const int y = std::max(0, static_cast<int>(std::floor(min_y)));
-    const int r = std::min(mCanvasWidth,  static_cast<int>(std::ceil(max_x)));
-    const int b = std::min(mCanvasHeight, static_cast<int>(std::ceil(max_y)));
-
-    PixelRect dmg{x, y, r, b};
-    mDirtyPaints.clear();
-    if (dmg.empty()) return PixelRect{};
-
-    mCanvas->viewport(dmg.left, dmg.top, dmg.width(), dmg.height());
-    mCanvas->update();
     mCanvas->draw(false);
     mCanvas->sync();
     return dmg;
 }
 
-void InstrumentContentPanel::AddScratcher(std::shared_ptr<Scratcher> scratcher)
+void InstrumentPanel::AddScratcher(std::shared_ptr<Scratcher> scratcher)
 {
     std::unique_lock lock(mScratcherMutex);
     auto& slot = mScratchers.emplace_back(std::move(scratcher));
     slot->OnAttach(*this);
 }
 
-const char* InstrumentContentPanel::DefaultFontName() const
+const char* InstrumentPanel::DefaultFontName() const
 {
     return kDefaultFontName;
 }
 
-void InstrumentContentPanel::SetSymbol(std::string symbol)
+void InstrumentPanel::SetSymbol(std::string symbol)
 {
     mSymbol = std::move(symbol);
     OnSymbolChanged(mSymbol);
 }
 
-void InstrumentContentPanel::SetInstrumentList(std::vector<std::string> symbols)
+void InstrumentPanel::SetInstrumentList(std::vector<std::string> symbols)
 {
     mInstrumentList = std::move(symbols);
     OnInstrumentListChanged(mInstrumentList);
 }
 
-void InstrumentContentPanel::SetInstrumentInfo(std::optional<bybit::InstrumentInfo> info)
+void InstrumentPanel::SetInstrumentInfo(std::optional<bybit::InstrumentInfo> info)
 {
     if (info) mSymbol = info->symbol;
     mInstrument = std::move(info);
     OnInstrumentInfoChanged(mInstrument);
 }
 
-void InstrumentContentPanel::EmitUserSymbolSelection(std::string symbol)
+void InstrumentPanel::EmitUserSymbolSelection(std::string symbol)
 {
     if (mOnUserSymbolSelection)
         mOnUserSymbolSelection(std::move(symbol));

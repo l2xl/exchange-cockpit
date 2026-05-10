@@ -29,19 +29,20 @@ namespace scratcher::elements {
 
 class PixelBufferElement;
 
-class InstrumentPanelElement : public cockpit::InstrumentContentPanel, public std::enable_shared_from_this<InstrumentPanelElement>
+class InstrumentPanelElement : public cockpit::InstrumentPanel, public std::enable_shared_from_this<InstrumentPanelElement>
 {
     struct EnsurePrivate {};
 
 public:
-    InstrumentPanelElement(cockpit::PanelType type, std::chrono::seconds candle_period, uint32_t candle_width_pixels,
+    InstrumentPanelElement(cockpit::PanelType type, seconds candle_period, uint32_t candle_width_pixels,
                             std::weak_ptr<cycfi::elements::view> view, InstrumentPanelWidgets widgets, EnsurePrivate);
     ~InstrumentPanelElement() override;
 
-    static std::shared_ptr<InstrumentPanelElement> Create(cockpit::PanelType type, std::chrono::seconds candle_period, uint32_t candle_width_pixels,
+    static std::shared_ptr<InstrumentPanelElement> Create(cockpit::PanelType type, seconds candle_period, uint32_t candle_width_pixels,
                                                             std::weak_ptr<cycfi::elements::view> view, InstrumentPanelWidgets widgets);
 
-    void SetDataReady(bool ready) override;
+    void Update() override;
+    void Refresh() override;
 
     void PostToUi(std::function<void()> fn) override;
 

@@ -6,7 +6,7 @@
 
 namespace scratcher::cockpit {
 
-class InstrumentContentPanel;
+class InstrumentPanel;
 
 // Scratchers are observer-driven actors that own a portion of the panel's scene tree.
 // Lifecycle:
@@ -24,10 +24,10 @@ struct Scratcher
 {
     virtual ~Scratcher() = default;
 
-    virtual void OnAttach(InstrumentContentPanel& panel) = 0;
-    virtual void CalculateSize(InstrumentContentPanel& /*panel*/) {}
-    virtual void OnLayout(InstrumentContentPanel& /*panel*/) {}
-    virtual void OnDetach(InstrumentContentPanel& /*panel*/) {}
+    virtual void OnAttach(InstrumentPanel& panel) = 0;
+    virtual void CalculateSize(InstrumentPanel& /*panel*/) {}
+    virtual void OnLayout(InstrumentPanel& /*panel*/) {}
+    virtual void OnDetach(InstrumentPanel& /*panel*/) {}
 };
 
 }

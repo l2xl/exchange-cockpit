@@ -35,8 +35,6 @@ struct InstrumentPanelWidgets
 class UiBuilder
 {
 public:
-    using PanelWidgets = std::pair<cycfi::elements::element_ptr, std::shared_ptr<cycfi::elements::deck_composite>>;
-
     InstrumentPanelWidgets MakeInstrumentPanel(cockpit::PanelType type, std::function<void()> onClose, std::function<void(cockpit::PanelType, SplitDirection)> onSplit);
 
     cycfi::elements::element_ptr MakeAppBar(cycfi::elements::element_ptr tab_bar_area, cycfi::elements::element_ptr menu_items, std::function<void(bool)> onHamburger);
@@ -47,7 +45,7 @@ public:
     cycfi::elements::element_ptr MakePanelTypeSelector(uint32_t icon_code, std::function<void(cockpit::PanelType)> onTypeSelected);
     cycfi::elements::element_ptr MakeCloseButton(std::function<void()> onClose);
 
-    std::pair<cycfi::elements::element_ptr, std::shared_ptr<cycfi::elements::deck_composite>> MakePanel(cockpit::PanelType type, std::function<void(cockpit::PanelType)> onChangeType, std::function<void()> onClose, std::function<void(cockpit::PanelType, SplitDirection)> onSplit);
+    cycfi::elements::element_ptr MakePanel(cockpit::PanelType type, std::function<void(cockpit::PanelType)> onChangeType, std::function<void()> onClose, std::function<void(cockpit::PanelType, SplitDirection)> onSplit);
 
     cycfi::elements::element_ptr MakeVerticalSplit(cycfi::elements::element_ptr left, cycfi::elements::element_ptr right);
     cycfi::elements::element_ptr MakeHorizontalSplit(cycfi::elements::element_ptr top, cycfi::elements::element_ptr bottom);

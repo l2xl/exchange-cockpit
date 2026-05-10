@@ -42,9 +42,9 @@ public:
     }
     void IngestTrades(const Range& trades);
 
-    void OnAttach(InstrumentContentPanel& panel) override;
-    void OnLayout(InstrumentContentPanel& panel) override;
-    void OnDetach(InstrumentContentPanel& panel) override;
+    void OnAttach(InstrumentPanel& panel) override;
+    void OnLayout(InstrumentPanel& panel) override;
+    void OnDetach(InstrumentPanel& panel) override;
 };
 
 template <std::ranges::forward_range Range>

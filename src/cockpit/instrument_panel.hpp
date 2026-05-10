@@ -4,12 +4,14 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <shared_mutex>
 #include <span>
@@ -43,11 +45,11 @@ struct SceneFloor
     uint64_t price_points = 0;
 };
 
-class InstrumentContentPanel : public ContentPanel
+class InstrumentPanel : public ContentPanel
 {
 public:
-    InstrumentContentPanel(PanelType type, std::chrono::seconds candle_period, uint32_t candle_width_pixels);
-    ~InstrumentContentPanel() override;
+    InstrumentPanel(PanelType type, std::chrono::seconds candle_period, uint32_t candle_width_pixels);
+    ~InstrumentPanel() override;
 
     void SetSymbol(std::string symbol);
     void SetInstrumentList(std::vector<std::string> symbols);
@@ -123,9 +125,23 @@ public:
     void SetTarget(std::span<uint32_t> buffer, uint32_t stride, uint32_t width, uint32_t height);
     void OnSize(int width, int height);
 
+    // Circuit B (worker-safe, blocking): take the data lock, run DoUpdate, stamp the
+    // monotonic timestamp, release. Subclasses post the UI redraw via Refresh().
+    void Update() override;
+
+    // Circuit A (UI-thread paint hook): cheap try-lock + frame-throttle gate. If the
+    // throttle window has not elapsed OR another thread holds the data lock, returns
+    // immediately and the caller proceeds to Render() with the previously published
+    // scene state. Otherwise runs DoUpdate() and stamps the timestamp.
+    void OnUpdate();
+
     // Damage-tracked render. Returns the rect that was repainted, in canvas-pixel coords;
     // an empty rect means no draw happened this frame and the host should NOT call
     // cairo_surface_mark_dirty_rectangle (the buffer is unchanged from the previous frame).
+    // Two-stage locking: viewport()+canvas->update() run under the data lock so a worker
+    // cannot mutate paint state during ThorVG's tree walk; draw()+sync() run lock-free
+    // (the command buffer has already been built by update(), and sync() is the dominant
+    // blocking cost — releasing here lets workers progress while the rasteriser runs).
     PixelRect Render();
 
     using on_user_symbol_selection_t = std::function<void(std::string)>;
@@ -135,6 +151,13 @@ public:
 
 protected:
     void EmitUserSymbolSelection(std::string symbol);
+
+    // Pure scene/scratcher recalculation. PRECONDITION: caller holds mDataMutex.
+    void DoUpdate();
+
+    // Tunable; default 16 ms (~60 Hz). Set to 0 to disable throttling (useful in tests
+    // where deterministic single-frame rendering is required).
+    void SetUpdateThrottle(std::chrono::nanoseconds dt) noexcept { mUpdateThrottleNs = dt.count(); }
 
     virtual void OnSymbolChanged(const std::string& /*symbol*/) {}
     virtual void OnInstrumentListChanged(const std::vector<std::string>& /*symbols*/) {}
@@ -174,6 +197,21 @@ private:
     std::deque<std::shared_ptr<Scratcher>> mScratchers;
     std::shared_ptr<QuoteScratcher> mQuoteScratcher;
     mutable std::shared_mutex mScratcherMutex;
+
+    // Serialises Circuit A (UI paint hook) and Circuit B (worker Update) against each
+    // other and against Render()'s viewport+canvas->update() phase. Distinct from
+    // mScratcherMutex (which only protects the scratcher deque structure) — the data
+    // mutex covers the whole DoUpdate critical section AND the ThorVG scene-tree walk
+    // that follows in Render().
+    mutable std::mutex mDataMutex;
+
+    // Monotonic ns-since-steady_clock-epoch of the last DoUpdate completion. Read by
+    // OnUpdate() to gate the throttle without locking. int64_t over std::atomic guarantees
+    // is_always_lock_free on every supported platform; std::atomic<time_point> does not.
+    std::atomic<int64_t> mLastUpdateNs{0};
+
+    // 16 ms = 60 Hz. Updated via SetUpdateThrottle(); 0 disables throttling.
+    int64_t mUpdateThrottleNs = 16'000'000;
 
     // Subscription registry. SizeCallback and ViewCallback share the same id space so a
     // single Unsubscribe(id) suffices regardless of which channel registered the id.

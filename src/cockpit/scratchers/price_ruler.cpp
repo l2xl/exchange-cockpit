@@ -17,7 +17,7 @@ constexpr int kLabelPadding = 4;
 
 }
 
-void PriceRuler::CalculateSize(InstrumentContentPanel& panel)
+void PriceRuler::CalculateSize(InstrumentPanel& panel)
 {
     const float font_size = panel.DefaultFontSize();
     const int char_width = static_cast<int>(font_size * 0.55f);
@@ -27,18 +27,18 @@ void PriceRuler::CalculateSize(InstrumentContentPanel& panel)
     rect.right = std::max(rect.left, rect.right - mReservedWidth);
 }
 
-void PriceRuler::OnAttach(InstrumentContentPanel& panel)
+void PriceRuler::OnAttach(InstrumentPanel& panel)
 {
     mScene.reset(tvg::Scene::gen());
     panel.HudScene().add(mScene.get());
 }
 
-void PriceRuler::OnDetach(InstrumentContentPanel& /*panel*/)
+void PriceRuler::OnDetach(InstrumentPanel& /*panel*/)
 {
     mScene.reset();
 }
 
-void PriceRuler::OnLayout(InstrumentContentPanel& panel)
+void PriceRuler::OnLayout(InstrumentPanel& panel)
 {
     if (!mScene) return;
     mScene->remove();

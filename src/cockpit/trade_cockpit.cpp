@@ -101,12 +101,12 @@ panel_id TradeCockpit::RegisterPanel(std::shared_ptr<ContentPanel> panel)
 {
     panel_id pid = mNextPanelId++;
 
-    if (mDataReady)
-        panel->SetDataReady(true);
-
-    if (auto ipanel = std::dynamic_pointer_cast<InstrumentContentPanel>(panel)) {
+    if (auto ipanel = std::dynamic_pointer_cast<InstrumentPanel>(panel)) {
         WireInstrumentPanel(ipanel, pid);
     }
+
+    if (mDataReady)
+        panel->Update();
 
     mPanels[pid] = std::move(panel);
     return pid;
@@ -118,7 +118,7 @@ void TradeCockpit::UnregisterPanel(panel_id pid)
     mPendingSymbols.erase(pid);
 }
 
-void TradeCockpit::WireInstrumentPanel(std::shared_ptr<InstrumentContentPanel> ipanel, panel_id pid)
+void TradeCockpit::WireInstrumentPanel(std::shared_ptr<InstrumentPanel> ipanel, panel_id pid)
 {
     if (mDataReady)
         ipanel->SetInstrumentList(mInstruments);
@@ -143,7 +143,7 @@ void TradeCockpit::HandleUserSymbolSelection(panel_id pid, std::string symbol)
 {
     auto it = mPanels.find(pid);
     if (it == mPanels.end()) return;
-    auto ipanel = std::dynamic_pointer_cast<InstrumentContentPanel>(it->second);
+    auto ipanel = std::dynamic_pointer_cast<InstrumentPanel>(it->second);
     if (!ipanel) return;
 
     ipanel->SetSymbol(symbol);
@@ -177,9 +177,9 @@ void TradeCockpit::OnInstrumentsLoaded()
     mDataReady = true;
 
     for (auto& [pid, panel] : mPanels) {
-        panel->SetDataReady(true);
-        if (auto ipanel = std::dynamic_pointer_cast<InstrumentContentPanel>(panel))
+        if (auto ipanel = std::dynamic_pointer_cast<InstrumentPanel>(panel))
             ipanel->SetInstrumentList(mInstruments);
+        panel->Update();
     }
 
     auto pending = std::move(mPendingSymbols);

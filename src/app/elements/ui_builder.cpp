@@ -261,44 +261,38 @@ InstrumentPanelWidgets UiBuilder::MakeInstrumentPanel(PanelType type,
     return w;
 }
 
-std::pair<el::element_ptr, std::shared_ptr<el::deck_composite>> UiBuilder::MakePanel(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void()> onClose, std::function<void(PanelType, SplitDirection)> onSplit)
+el::element_ptr UiBuilder::MakePanel(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void()> onClose, std::function<void(PanelType, SplitDirection)> onSplit)
 {
-    auto deck = std::make_shared<el::deck_composite>();
+    el::element_ptr body;
     if (type == PanelType::Empty) {
-        deck->push_back(
-            el::share(
-                el::layer(
-                    el::align_center_middle(
-                        el::label("Select a panel type").font_size(14).font_color(dim_text_color)
-                    ),
-                    el::box(content_bg_color)
-                )
+        body = el::share(
+            el::layer(
+                el::align_center_middle(
+                    el::label("Select a panel type").font_size(14).font_color(dim_text_color)
+                ),
+                el::box(content_bg_color)
             )
         );
     } else {
-        deck->push_back(MakeWaitingIndicator());
+        body = MakeWaitingIndicator();
     }
-    deck->select(0);
 
-    el::element_ptr root;
     if (type == PanelType::Empty) {
-        root = el::share(
+        return el::share(
             el::vtile(
                 el::hold(MakePanelHeader(type, std::move(onChangeType), std::move(onClose), nullptr)),
-                el::vstretch(1.0, el::hold(deck))
-            )
-        );
-    } else {
-        root = el::share(
-            el::vtile(
-                el::hold(MakePanelHeader(type, std::move(onChangeType), std::move(onClose), onSplit)),
-                el::vstretch(1.0, el::hold(deck)),
-                el::hold(MakePanelFooter(std::move(onSplit)))
+                el::vstretch(1.0, el::hold(body))
             )
         );
     }
 
-    return std::make_pair(std::move(root), std::move(deck));
+    return el::share(
+        el::vtile(
+            el::hold(MakePanelHeader(type, std::move(onChangeType), std::move(onClose), onSplit)),
+            el::vstretch(1.0, el::hold(body)),
+            el::hold(MakePanelFooter(std::move(onSplit)))
+        )
+    );
 }
 
 el::element_ptr UiBuilder::MakeVerticalSplit(el::element_ptr left, el::element_ptr right)

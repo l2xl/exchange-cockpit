@@ -53,7 +53,7 @@ private:
     struct EnsurePrivate {};
 
     void OnInstrumentsLoaded();
-    void WireInstrumentPanel(std::shared_ptr<InstrumentContentPanel> ipanel, panel_id pid);
+    void WireInstrumentPanel(std::shared_ptr<InstrumentPanel> ipanel, panel_id pid);
     void HandleUserSymbolSelection(panel_id pid, std::string symbol);
 
     static boost::asio::awaitable<void> coUpdate(std::weak_ptr<TradeCockpit> ref);

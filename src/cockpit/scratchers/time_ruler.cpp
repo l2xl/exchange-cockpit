@@ -306,7 +306,7 @@ void emit_label(tvg::Scene& scene, const char* font, float font_size, const std:
 
 } // namespace
 
-void TimeRuler::OnAttach(InstrumentContentPanel& panel)
+void TimeRuler::OnAttach(InstrumentPanel& panel)
 {
     mScene.reset(tvg::Scene::gen());
     mAxisShape.reset(tvg::Shape::gen());
@@ -332,7 +332,7 @@ void TimeRuler::OnAttach(InstrumentContentPanel& panel)
     });
 }
 
-void TimeRuler::OnDetach(InstrumentContentPanel& panel)
+void TimeRuler::OnDetach(InstrumentPanel& panel)
 {
     if (mViewSubscriptionId != 0) {
         panel.Unsubscribe(mViewSubscriptionId);
@@ -347,7 +347,7 @@ void TimeRuler::OnDetach(InstrumentContentPanel& panel)
     mScene.reset();
 }
 
-void TimeRuler::CalculateSize(InstrumentContentPanel& panel)
+void TimeRuler::CalculateSize(InstrumentPanel& panel)
 {
     const float font_size  = panel.DefaultFontSize() * kLabelFontScale;
     const int   text_box_h = static_cast<int>(std::ceil(font_size * kLineHeightScale));
@@ -361,12 +361,12 @@ void TimeRuler::CalculateSize(InstrumentContentPanel& panel)
     rect.bottom = std::max(rect.top, rect.bottom - mReservedHeight);
 }
 
-void TimeRuler::OnLayout(InstrumentContentPanel& panel)
+void TimeRuler::OnLayout(InstrumentPanel& panel)
 {
     RebuildAll(panel);
 }
 
-void TimeRuler::RebuildAll(InstrumentContentPanel& panel)
+void TimeRuler::RebuildAll(InstrumentPanel& panel)
 {
     if (!mScene) return;
 

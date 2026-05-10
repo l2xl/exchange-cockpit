@@ -32,8 +32,14 @@ public:
 
     PanelType Type() const { return mType; }
 
-    virtual void SetDataReady(bool ready) = 0;
-    virtual void Update() {}
+    // Worker-safe blocking update. Acquires the panel's data lock, recalculates
+    // the vector model, releases. Subclasses that own a UI surface follow with
+    // their own Refresh() to schedule a redraw.
+    virtual void Update() = 0;
+
+    // Cheap UI-redraw request. Thread-safe by contract; implementations must not
+    // touch the data lock here.
+    virtual void Refresh() = 0;
 
 private:
     PanelType mType;

@@ -32,37 +32,6 @@ bool ContainsNode(PanelNode* root, PanelNode* target)
         || ContainsNode(split->Second().get(), target);
 }
 
-class ElementsContentPanel : public cockpit::ContentPanel, public std::enable_shared_from_this<ElementsContentPanel>
-{
-public:
-    ElementsContentPanel(cockpit::PanelType type, std::weak_ptr<cycfi::elements::view> view, std::shared_ptr<cycfi::elements::deck_composite> overlayDeck)
-    : ContentPanel(type) , mView(std::move(view)) , mOverlayDeck(std::move(overlayDeck))
-    {}
-
-    void SetDataReady(bool ready) override
-    {
-        auto ref = weak_from_this();
-        auto v = mView.lock();
-        if (!v) return;
-
-        v->post([=]() {
-            if (auto self = ref.lock()) {
-                if (auto v = self->mView.lock()) {
-                    if (self->mOverlayDeck && self->mOverlayDeck->size() >= 2) {
-                        self->mOverlayDeck->select(ready ? 1 : 0);
-                        v->layout();
-                        v->refresh();
-                    }
-                }
-            }
-        });
-    }
-
-private:
-    std::weak_ptr<cycfi::elements::view> mView;
-    std::shared_ptr<cycfi::elements::deck_composite> mOverlayDeck;
-};
-
 } // anonymous namespace
 
 MainWindow::MainWindow(UiBuilder& builder)
@@ -171,30 +140,28 @@ std::shared_ptr<LeafPanelNode> MainWindow::MakeLeaf(PanelType type)
         if (auto n = w.lock()) HandleClose(n);
     };
 
-    std::shared_ptr<cockpit::ContentPanel> panel;
-    el::element_ptr element;
-
+    // Only instrument-based panels carry a ContentPanel — other types are static UI
+    // (waiting indicator / "Select a panel type" placeholder) with nothing for the trade
+    // cockpit to drive, so they skip RegisterPanel and use the sentinel pid 0.
     const bool instrumentBased = (type == PanelType::MarketGraph || type == PanelType::OrderBook);
-
     if (instrumentBased) {
         auto widgets = mBuilder.MakeInstrumentPanel(type, std::move(onClose), std::move(onSplit));
-        element = widgets.root;
+        auto element = widgets.root;
         const auto defaults = mInstrumentPanelDefaultsAccessor ? mInstrumentPanelDefaultsAccessor() : InstrumentPanelDefaults{};
-        panel = InstrumentPanelElement::Create(type, defaults.candle_period, defaults.candle_width_pixels, mView, std::move(widgets));
-    } else {
-        auto [elem, deck] = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onClose), std::move(onSplit));
-        element = std::move(elem);
-        panel = std::make_shared<ElementsContentPanel>(type, mView, std::move(deck));
+        std::shared_ptr<cockpit::ContentPanel> panel = InstrumentPanelElement::Create(type, defaults.candle_period, defaults.candle_width_pixels, mView, std::move(widgets));
+
+        panel_id pid = 0;
+        if (mOnPanelCreated)
+            pid = mOnPanelCreated(std::move(panel));
+
+        leaf->Initialize(std::move(element), pid, [this, pid]() {
+            if (mOnPanelClosed) mOnPanelClosed(pid);
+        });
+        return leaf;
     }
 
-    panel_id pid = 0;
-    if (mOnPanelCreated)
-        pid = mOnPanelCreated(std::move(panel));
-
-    leaf->Initialize(std::move(element), pid, [this, pid]() {
-        if (mOnPanelClosed) mOnPanelClosed(pid);
-    });
-
+    auto element = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onClose), std::move(onSplit));
+    leaf->Initialize(std::move(element), 0, nullptr);
     return leaf;
 }
 
