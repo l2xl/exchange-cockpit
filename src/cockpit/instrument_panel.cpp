@@ -173,38 +173,11 @@ InstrumentPanel::~InstrumentPanel()
 void InstrumentPanel::SetSceneFloor(SceneFloor floor)
 {
     mSceneFloor = floor;
-    // Floor change shifts logical-scene offset, which is a view change — trigger any
-    // observers (TimeRuler in Phase 3) so they re-anchor their tick positions.
-    for (auto& [id, sub] : mSubscriptions) {
-        if (sub.on_view) sub.on_view();
-    }
 }
 
 void InstrumentPanel::SetViewLeftTimeMs(std::optional<int64_t> t_ms)
 {
     mPinnedViewLeftMs = t_ms;
-    for (auto& [id, sub] : mSubscriptions) {
-        if (sub.on_view) sub.on_view();
-    }
-}
-
-InstrumentPanel::SubscriptionId InstrumentPanel::SubscribeSize(SizeCallback cb)
-{
-    const SubscriptionId id = mNextSubscriptionId++;
-    mSubscriptions[id].on_size = std::move(cb);
-    return id;
-}
-
-InstrumentPanel::SubscriptionId InstrumentPanel::SubscribeView(ViewCallback cb)
-{
-    const SubscriptionId id = mNextSubscriptionId++;
-    mSubscriptions[id].on_view = std::move(cb);
-    return id;
-}
-
-void InstrumentPanel::Unsubscribe(SubscriptionId id)
-{
-    mSubscriptions.erase(id);
 }
 
 void InstrumentPanel::MarkDirty(tvg::Paint* paint)
@@ -394,10 +367,6 @@ void InstrumentPanel::DoUpdate()
     {
         std::shared_lock lock(mScratcherMutex);
         for (const auto& s : mScratchers) s->OnLayout(*this);
-    }
-
-    for (auto& [id, sub] : mSubscriptions) {
-        if (sub.on_size) sub.on_size();
     }
 
     // Resize forces a full redraw: pre-bounds from before the resize are now meaningless

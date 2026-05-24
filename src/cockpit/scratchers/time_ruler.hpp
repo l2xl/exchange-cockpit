@@ -50,10 +50,6 @@ private:
     tvg_ptr<tvg::Scene> mLabelScene;
     tvg_ptr<tvg::Text>  mLeftmostTimestamp;
 
-    // Subscription id from panel.SubscribeView so view-side mutations trigger a rebuild.
-    // 0 sentinel = no active subscription (simpler than std::optional and consistent with
-    // the panel's monotonically increasing 1-based id allocation).
-    uint64_t mViewSubscriptionId = 0;
 };
 
 }

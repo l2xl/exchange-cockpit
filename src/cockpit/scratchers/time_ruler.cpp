@@ -322,23 +322,10 @@ void TimeRuler::OnAttach(InstrumentPanel& panel)
     mScene->add(mLeftmostTimestamp.get());
 
     panel.HudScene().add(mScene.get());
-
-    // View subscription: any change to the panel's view (pan, zoom, floor reseat) triggers
-    // a full rebuild. This is Phase-3-minimum: persistent paints structure is wired but
-    // the in-place pan-translate optimisation is deferred — the rebuild keeps the contract
-    // identical to OnLayout, which is enough for visual correctness.
-    // mViewSubscriptionId = panel.SubscribeView([this, &panel]() {
-    //     RebuildAll(panel);
-    // });
 }
 
-void TimeRuler::OnDetach(InstrumentPanel& panel)
+void TimeRuler::OnDetach(InstrumentPanel& /*panel*/)
 {
-    if (mViewSubscriptionId != 0) {
-        panel.Unsubscribe(mViewSubscriptionId);
-        mViewSubscriptionId = 0;
-    }
-
     mLeftmostTimestamp.reset();
     mLabelScene.reset();
     mTickLinesShape.reset();

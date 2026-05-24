@@ -8,13 +8,10 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
-#include <functional>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
-#include <span>
 #include <string>
 #include <vector>
 
@@ -92,17 +89,6 @@ public:
 
     void AddScratcher(std::shared_ptr<Scratcher> scratcher);
     std::shared_ptr<QuoteScratcher> QuoteScratcherInstance() const { return mQuoteScratcher; }
-
-    // Subscriptions. Callers receive a SubscriptionId from Subscribe* and use it to
-    // Unsubscribe. SubscribeSize fires when the canvas (and inner data rect) change;
-    // SubscribeView fires when the view's pan/zoom transform on mLogicalScene changes
-    // (currently only invoked via SetViewLeftTimeMs; pan/zoom UI is Phase 4 work).
-    using SizeCallback = std::function<void()>;
-    using ViewCallback = std::function<void()>;
-    using SubscriptionId = uint64_t;
-    SubscriptionId SubscribeSize(SizeCallback cb);
-    SubscriptionId SubscribeView(ViewCallback cb);
-    void Unsubscribe(SubscriptionId id);
 
     // Damage tracking. Scratchers call this BEFORE mutating a paint; the panel captures
     // the paint's pre-mutation bounds (valid from the previous frame's sync) and adds
@@ -213,16 +199,6 @@ private:
 
     // 16 ms = 60 Hz. Updated via SetUpdateThrottle(); 0 disables throttling.
     int64_t mUpdateThrottleNs = 16'000'000;
-
-    // Subscription registry. SizeCallback and ViewCallback share the same id space so a
-    // single Unsubscribe(id) suffices regardless of which channel registered the id.
-    struct Subscription
-    {
-        SizeCallback on_size;
-        ViewCallback on_view;
-    };
-    std::map<SubscriptionId, Subscription> mSubscriptions;
-    SubscriptionId mNextSubscriptionId = 1;
 
     // Damage-tracking state.
     struct DirtyEntry
