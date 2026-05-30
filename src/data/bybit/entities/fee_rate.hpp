@@ -16,15 +16,18 @@
 
 #include <string>
 #include <optional>
+#include "currency.hpp"
 
 namespace scratcher::bybit {
+
+using scratcher::currency;
 
 // Fee rate information from ByBit Account/GetFeeRate API
 struct FeeRate {
     std::string symbol;  // Symbol name (e.g., "BTCUSDT", empty for options)
     std::optional<std::string> baseCoin; // Base coin (e.g., "BTC", "ETH", empty for spot)
-    std::string takerFeeRate;           // Taker fee rate (e.g., "0.0006")
-    std::string makerFeeRate;           // Maker fee rate (e.g., "0.0001")
+    currency<uint64_t> takerFeeRate;    // Taker fee rate (e.g., "0.0006")
+    currency<uint64_t> makerFeeRate;    // Maker fee rate (e.g., "0.0001")
 };
 
 

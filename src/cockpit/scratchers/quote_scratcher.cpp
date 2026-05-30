@@ -217,10 +217,12 @@ std::vector<PublicTradeRecord> PullAdapted(
             // than going through utc_clock::from_sys, which would add the
             // current leap-second offset (~27 s in 2026) and de-sync our
             // last_seen bookmark from the feed's wire timestamps.
+            // price/size are already parsed currency from the feed — rescale (no
+            // re-parse) to the instrument's fixed point count for candle math.
             out.push_back(PublicTradeRecord{
                 .trade_time = time_point{milliseconds{std::stoll(it->time)}},
-                .price_points  = currency<uint64_t>(it->price, price_decimals).raw(),
-                .volume_points = currency<uint64_t>(it->size,  size_decimals).raw(),
+                .price_points  = it->price.raw_at(price_decimals),
+                .volume_points = it->size.raw_at(size_decimals),
             });
         }
         catch (const std::exception&) {

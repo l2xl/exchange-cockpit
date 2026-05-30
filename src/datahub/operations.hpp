@@ -3,6 +3,7 @@
 
 #include "data_model.hpp"
 #include "query_builder.hpp"
+#include "currency.hpp"
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <array>
 #include <memory>
@@ -101,6 +102,8 @@ private:
             m_statement.bind(Index, value ? 1 : 0);
         } else if constexpr (std::is_enum_v<DecayedT>) {
             m_statement.bind(Index, static_cast<int64_t>(value));
+        } else if constexpr (scratcher::is_currency_v<DecayedT>) {
+            m_statement.bind(Index, value.to_string());
         } else if constexpr (std::is_same_v<DecayedT, std::monostate>) {
             m_statement.bind(Index); // Bind NULL
         } else if constexpr (std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
@@ -140,6 +143,8 @@ private:
             m_statement.bind(index, value ? 1 : 0);
         } else if constexpr (std::is_enum_v<DecayedT>) {
             m_statement.bind(index, static_cast<int64_t>(value));
+        } else if constexpr (scratcher::is_currency_v<DecayedT>) {
+            m_statement.bind(index, value.to_string());
         } else if constexpr (std::is_same_v<DecayedT, std::monostate>) {
             m_statement.bind(index); // Bind NULL
         } else if constexpr (std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
@@ -257,6 +262,9 @@ private:
                     glz::get<Idx>(tie) = static_cast<FieldType>(col.getInt64());
                 } else if constexpr (std::is_floating_point_v<FieldType>) {
                     glz::get<Idx>(tie) = static_cast<FieldType>(col.getDouble());
+                } else if constexpr (scratcher::is_currency_v<FieldType>) {
+                    auto s = col.getString();
+                    glz::get<Idx>(tie) = s.empty() ? FieldType{} : FieldType(s);
                 } else if constexpr (requires { typename FieldType::value_type; } && std::is_same_v<FieldType, std::optional<typename FieldType::value_type>>) {
                     using InnerType = typename FieldType::value_type;
                     if constexpr (std::is_same_v<InnerType, std::string>) {
@@ -267,6 +275,9 @@ private:
                         glz::get<Idx>(tie) = FieldType{static_cast<InnerType>(col.getDouble())};
                     } else if constexpr (std::is_enum_v<InnerType>) {
                         glz::get<Idx>(tie) = FieldType{static_cast<InnerType>(col.getInt64())};
+                    } else if constexpr (scratcher::is_currency_v<InnerType>) {
+                        auto s = col.getString();
+                        glz::get<Idx>(tie) = s.empty() ? FieldType{} : FieldType{InnerType(s)};
                     }
                 }
             }.template operator()<I>()), ...);

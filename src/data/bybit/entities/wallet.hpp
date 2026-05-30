@@ -18,25 +18,29 @@
 #include <deque>
 #include <optional>
 #include "enums.hpp"
+#include "currency.hpp"
 
 namespace scratcher::bybit {
 
+using scratcher::currency;
+
+// PnL fields are signed (currency<int64_t>); balances/equity are non-negative.
 struct CoinBalance {
     std::string coin;
-    std::optional<std::string> equity;
-    std::optional<std::string> usdValue;
-    std::optional<std::string> walletBalance;
-    std::optional<std::string> availableToWithdraw;
-    std::optional<std::string> unrealisedPnl;
-    std::optional<std::string> cumRealisedPnl;
+    std::optional<currency<uint64_t>> equity;
+    std::optional<currency<uint64_t>> usdValue;
+    std::optional<currency<uint64_t>> walletBalance;
+    std::optional<currency<uint64_t>> availableToWithdraw;
+    std::optional<currency<int64_t>> unrealisedPnl;
+    std::optional<currency<int64_t>> cumRealisedPnl;
 };
 
 struct WalletBalance {
     AccountType accountType;
-    std::optional<std::string> totalEquity;
-    std::optional<std::string> totalWalletBalance;
-    std::optional<std::string> totalAvailableBalance;
-    std::optional<std::string> totalPerpUPL;
+    std::optional<currency<uint64_t>> totalEquity;
+    std::optional<currency<uint64_t>> totalWalletBalance;
+    std::optional<currency<uint64_t>> totalAvailableBalance;
+    std::optional<currency<int64_t>> totalPerpUPL;
     std::deque<CoinBalance> coin;
 };
 

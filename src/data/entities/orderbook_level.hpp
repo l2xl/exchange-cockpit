@@ -13,8 +13,6 @@
 #ifndef SCRATCHER_ORDERBOOK_LEVEL_HPP
 #define SCRATCHER_ORDERBOOK_LEVEL_HPP
 
-#include <glaze/glaze.hpp>
-
 #include "currency.hpp"
 
 namespace scratcher {
@@ -27,16 +25,8 @@ struct OrderBookLevel {
 
 } // namespace scratcher
 
-// Glaze: currency<int64_t> reads/writes as a JSON quoted string
-template<>
-struct glz::meta<scratcher::currency<int64_t>> {
-    static constexpr auto value = custom<
-        [](scratcher::currency<int64_t>& c, const std::string& s) { c = scratcher::currency<int64_t>(s); },
-        [](const scratcher::currency<int64_t>& c) -> std::string { return c.to_string(); }
-    >;
-};
-
-// Glaze: OrderBookLevel is a JSON array ["price", "size"]
+// Glaze: OrderBookLevel is a JSON array ["price", "size"]; each currency<int64_t>
+// reads/writes as a quoted decimal string via the shared codec in currency_glaze.hpp
 template<>
 struct glz::meta<scratcher::OrderBookLevel> {
     using T = scratcher::OrderBookLevel;

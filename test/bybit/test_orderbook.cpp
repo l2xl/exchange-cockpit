@@ -94,7 +94,7 @@ const std::vector<TestStep> test_vector = {
     },
 };
 
-bool has_level(const std::vector<OrderBookLevel>& levels, const std::string& price_str)
+bool has_level(const std::deque<OrderBookLevel>& levels, const std::string& price_str)
 {
     currency<int64_t> price(price_str);
     for (const auto& l : levels)
@@ -102,7 +102,7 @@ bool has_level(const std::vector<OrderBookLevel>& levels, const std::string& pri
     return false;
 }
 
-OrderBookLevel find_level(const std::vector<OrderBookLevel>& levels, const std::string& price_str)
+OrderBookLevel find_level(const std::deque<OrderBookLevel>& levels, const std::string& price_str)
 {
     currency<int64_t> price(price_str);
     for (const auto& l : levels)

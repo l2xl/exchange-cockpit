@@ -117,6 +117,18 @@ TEST_CASE("data_sink deduplication pipeline", "[datahub][http][websocket]")
     }
 }
 
+TEST_CASE("currency codec maps empty wire strings to zero", "[datahub][currency]")
+{
+    // ByBit emits "" for unset optional decimals; the codec must yield a zero
+    // currency rather than throwing, so one empty field never fails the parse.
+    bybit::PublicTrade t;
+    auto err = glz::read_json(t,
+        R"({"execId":"1","symbol":"BTCUSDT","price":"","size":"0.5","side":"Buy","time":"100","isBlockTrade":false,"isRPITrade":false,"seq":"1"})");
+    REQUIRE(!err);
+    CHECK(t.price.to_string() == "0");
+    CHECK(t.size.to_string() == "0.5");
+}
+
 namespace SQLite {
     void assertion_failed(const char* apFile, int apLine, const char* apFunc, const char* apExpr, const char* apMsg) {
         std::cerr << "SQLite assertion failed: " << apFile << ":" << apLine << " in " << apFunc << "() - " << apExpr;

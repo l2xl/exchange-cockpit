@@ -17,28 +17,33 @@
 #include <string>
 #include <optional>
 #include "enums.hpp"
+#include "currency.hpp"
 #include <glaze/glaze.hpp>
 #include <glaze/core/common.hpp>
 #include <glaze/core/wrappers.hpp>
 
 namespace scratcher::bybit {
 
+using scratcher::currency;
+
 // PublicTrade uses REST API field naming convention
-// This is the canonical representation used throughout the application
+// This is the canonical representation used throughout the application. price/size
+// are currency<uint64_t> parsed once from the wire quoted-string; time/seq stay
+// strings (a millisecond timestamp and a sequence id, not fractional values).
 struct PublicTrade {
     std::string execId;                // Execution ID
     std::string symbol;                 // Symbol name
-    std::string price;                  // Execution price (string to preserve precision)
-    std::string size;                   // Execution size (string to preserve precision)
+    currency<uint64_t> price;           // Execution price
+    currency<uint64_t> size;            // Execution size
     OrderSide side;                     // Trade side (Buy/Sell)
     std::string time;                   // Execution timestamp (ms) - JSON sends as string
     bool isBlockTrade{false};         // Whether it's a block trade
     bool isRPITrade{false};           // Whether it's RPI trade
     std::string seq;                    // Sequence number
-    std::optional<std::string> mP;     // Mark price (for options)
-    std::optional<std::string> iP;     // Index price (for options)
-    std::optional<std::string> mIv;    // Mark IV (for options)
-    std::optional<std::string> iv;      // IV (for options)
+    std::optional<currency<uint64_t>> mP;     // Mark price (for options)
+    std::optional<currency<uint64_t>> iP;     // Index price (for options)
+    std::optional<currency<uint64_t>> mIv;    // Mark IV (for options)
+    std::optional<currency<uint64_t>> iv;      // IV (for options)
 };
 
 // WsPublicTrade is a derived struct that acts as a name alias for WebSocket deserialization

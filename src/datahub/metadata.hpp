@@ -15,6 +15,7 @@
 #define SCRATCHER_DAO_METADATA_HPP
 
 #include "query_builder.hpp"
+#include "currency.hpp"
 #include <glaze/glaze.hpp>
 #include <type_traits>
 #include <algorithm>
@@ -63,6 +64,8 @@ std::string get_sql_type()
         return "INTEGER"; // SQLite stores booleans as integers
     } else if constexpr (std::is_enum_v<T>){
         return "INTEGER";
+    } else if constexpr (scratcher::is_currency_v<T>) {
+        return "TEXT"; // fixed-point persisted as its canonical decimal string
     } else if constexpr (requires { typename T::value_type; } && std::is_same_v<T, std::optional<typename T::value_type>>) {
         // Handle std::optional types - use the underlying type
         return get_sql_type<typename T::value_type>();

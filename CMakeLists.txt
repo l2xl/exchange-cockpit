@@ -114,7 +114,7 @@ set(core_SOURCES
         src/common/config_helper.hpp
         src/data/bybit/bybit_config.hpp
         src/cockpit/trade_cockpit_config.hpp
-        src/common/currency.hpp
+        src/data/currency.hpp
         src/common/hex.cpp
         src/common/hex.hpp
         src/common/timedef.hpp
@@ -287,14 +287,13 @@ if(NOT ANDROID)
     endfunction()
 
     # Add each test file as a separate executable
-    add_test(test_currency test/common/test_currency.cpp)
+    add_test(test_currency test/data/test_currency.cpp)
     add_test(test_buoy_candle test/core/test_buoy_candle.cpp)
     add_test(test_dao test/datahub/test_dao.cpp)
     add_test(test_http_query test/connect/test_http_query.cpp)
     add_test(test_websocket test/connect/test_websocket.cpp)
     add_test(test_data_sink test/datahub/test_data_sink.cpp)
     add_test(test_data_model test/bybit/test_data_model.cpp)
-    add_test(test_data_sandbox test/datahub/test_data_sandbox.cpp)
     add_test(test_sorted_data_feed test/datahub/test_sorted_data_feed.cpp)
     add_test(test_sorted_snapshot_data_feed test/datahub/test_sorted_snapshot_data_feed.cpp)
     add_test(test_keyed_snapshot_data_feed test/datahub/test_keyed_snapshot_data_feed.cpp)

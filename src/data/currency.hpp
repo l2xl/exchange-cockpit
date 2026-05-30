@@ -1,5 +1,5 @@
 // Scratcher project
-// Copyright (c) 2025 l2xl (l2xl/at/proton.me)
+// Copyright (c) 2025-2026 l2xl (l2xl/at/proton.me)
 // Distributed under the Intellectual Property Reserve License (IPRL)
 // -----BEGIN PGP PUBLIC KEY BLOCK-----
 //
@@ -11,57 +11,17 @@
 // =KKu7
 // -----END PGP PUBLIC KEY BLOCK-----
 
-#ifndef CURRENCY_HPP
-#define CURRENCY_HPP
+#ifndef SCRATCHER_DATA_CURRENCY_HPP
+#define SCRATCHER_DATA_CURRENCY_HPP
 
 #include <concepts>
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 namespace scratcher {
-
-// struct fixed_point_spec { };
-//
-// template <unsigned N>
-// struct bits : fixed_point_spec
-// {
-//     static constexpr unsigned K = (N > 0) ? 1 << (N-1) : 0;
-// };
-//
-// template <unsigned N>
-// struct dec : fixed_point_spec
-// {
-//     static constexpr unsigned K = std::pow(10, N);
-//
-//     // std::string to_string(auto i)
-//     // {
-//     //     if (i==0) return "0";
-//     //     std::string str_i =  std::to_string(i);
-//     //     std::ostringstream buf;
-//     //     if (i < K) {
-//     //         buf << "0.";
-//     //         for (size_t j = 0; j < (N - str_i.length()); ++j) buf << '0';
-//     //         size_t print_digits = str_i.length();
-//     //         for (auto d = std::div(i,10);!d.rem;d = std::div(d.quot, 10)) {
-//     //             --print_digits;
-//     //         }
-//     //         buf << str_i.substr(0, print_digits);
-//     //         return buf.str();
-//     //     }
-//     //     else {
-//     //         buf << str_i.substr(0, str_i.length() - N) << '.' << str_i.substr(str_i.length() - digits);
-//     //     }
-//     //
-//     //     std::string res = buf.str();
-//     //
-//     //     size_t cut_zeroes = 0;
-//     //     for (auto p = res.rbegin(); p != res.rend() && *p == '0'; ++p, ++cut_zeroes) ;
-//     //     if (res[res.length() - cut_zeroes - 1] == '.') ++cut_zeroes;
-//     //
-//     //     return res.substr(0, res.length() - cut_zeroes);
-//     // }
-// };
 
 namespace {
     size_t parse_presision_decimals(std::string_view s)
@@ -143,13 +103,30 @@ public:
     const T& multiplier() const
     { return m_multiplier; }
 
+    // Raw value rescaled to a fixed number of fractional decimals (truncating toward
+    // zero on narrowing). Lets a consumer normalise wire values that were each parsed
+    // with their own scale onto one instrument-wide scale without re-parsing strings.
+    T raw_at(size_t decimals) const
+    {
+        if (decimals == m_decimals) return m_value;
+        T factor = 1;
+        if (decimals > m_decimals) {
+            for (size_t i = m_decimals; i < decimals; ++i) factor *= 10;
+            return static_cast<T>(m_value * factor);
+        }
+        for (size_t i = decimals; i < m_decimals; ++i) factor *= 10;
+        return static_cast<T>(m_value / factor);
+    }
+
     std::string to_string() const
     {
         bool negative = m_value < 0;
         T abs_val = negative ? -m_value : m_value;
         std::string res = std::to_string(abs_val);
-        while (res.length() < m_decimals + 1) res.insert(res.begin(), '0');
-        res.insert(res.end() - m_decimals, '.');
+        if (m_decimals > 0) {
+            while (res.length() < m_decimals + 1) res.insert(res.begin(), '0');
+            res.insert(res.end() - m_decimals, '.');
+        }
         if (negative) res.insert(res.begin(), '-');
         return res;
     }
@@ -197,6 +174,13 @@ public:
 
 };
 
+// Trait / concept identifying a currency<T> specialisation. Used by generic code
+// (e.g. the datahub DAO) to treat fixed-point fields uniformly without naming the
+// integer storage type.
+template<class> inline constexpr bool is_currency_v = false;
+template<std::integral T> inline constexpr bool is_currency_v<currency<T>> = true;
+
+template<class T> concept currency_like = is_currency_v<std::remove_cvref_t<T>>;
 
 }
 
@@ -208,4 +192,22 @@ std::string to_string(const scratcher::currency<T>& c)
 
 }
 
-#endif //CURRENCY_HPP
+#include <glaze/glaze.hpp>
+
+// Glaze codec for any currency<T>: read/write as a JSON quoted decimal string.
+// Exchange wire formats carry every fractional value as a quoted string, so a
+// currency-typed entity field deserialises directly from "0.01" and serialises
+// back via to_string(). An empty string ("" — sent by ByBit for unset optional
+// price fields such as triggerPrice) maps to a zero currency rather than throwing,
+// so a single "" field never fails the whole record's parse.
+template<std::integral T>
+struct glz::meta<scratcher::currency<T>> {
+    static constexpr auto value = custom<
+        [](scratcher::currency<T>& c, const std::string& s) {
+            c = s.empty() ? scratcher::currency<T>{} : scratcher::currency<T>(s);
+        },
+        [](const scratcher::currency<T>& c) -> std::string { return c.to_string(); }
+    >;
+};
+
+#endif // SCRATCHER_DATA_CURRENCY_HPP

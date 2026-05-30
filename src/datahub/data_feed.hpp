@@ -39,7 +39,7 @@ public:
     using condition_type = data_condition<entity_type>;
     using const_iterator = std::ranges::iterator_t<const cache_type>;
     // Incremental feed: subscribers see [first, last) of the new tail directly.
-    using subscription_type = data_subscription<cache_type, const_iterator, const_iterator>;
+    using subscription_type = data_subscription<cache_type, const_iterator>;
 private:
     cache_type m_cache;
     std::list<std::weak_ptr<subscription_type>> m_subscriptions;

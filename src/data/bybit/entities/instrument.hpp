@@ -15,15 +15,20 @@
 #define BYBIT_INSTRUMENT_HPP
 
 #include <string>
-#include <glaze/glaze.hpp>
+#include <optional>
 
 #include "enums.hpp"
+#include "currency.hpp"
 
 namespace scratcher::bybit {
 
+using scratcher::currency;
+
 // InstrumentInfo - canonical flattened representation for DAO storage
 // This is the single source of truth for instrument data storage
-// Uses C++23 auto-reflection for DAO - no glz::meta needed
+// Uses C++23 auto-reflection for DAO - no glz::meta needed. Every fractional field
+// is a currency<uint64_t>: parsed once from the wire quoted-string and persisted as
+// its canonical decimal string (TEXT) by the DAO.
 struct InstrumentInfo {
     // Basic fields
     std::string symbol;                 // Symbol name (primary key)
@@ -36,48 +41,48 @@ struct InstrumentInfo {
     std::string stTag;                  // Special treatment label ("0" or "1")
 
     // Flattened priceFilter fields
-    std::string tickSize;               // Tick size for price
+    currency<uint64_t> tickSize;        // Tick size for price
 
     // Flattened lotSizeFilter fields
-    std::string basePrecision;          // Base coin precision
-    std::string quotePrecision;         // Quote coin precision
-    std::string minOrderQty;            // Minimum order quantity (deprecated)
-    std::string maxOrderQty;            // Maximum order quantity (deprecated)
-    std::string minOrderAmt;            // Minimum order amount
-    std::string maxOrderAmt;            // Maximum order amount (deprecated)
-    std::string maxLimitOrderQty;       // Maximum limit order quantity
-    std::string maxMarketOrderQty;      // Maximum market order quantity
-    std::string postOnlyMaxLimitOrderSize;   // Maximum post-only/RPI order size
+    currency<uint64_t> basePrecision;   // Base coin precision
+    currency<uint64_t> quotePrecision;  // Quote coin precision
+    currency<uint64_t> minOrderQty;     // Minimum order quantity (deprecated)
+    currency<uint64_t> maxOrderQty;     // Maximum order quantity (deprecated)
+    currency<uint64_t> minOrderAmt;     // Minimum order amount
+    currency<uint64_t> maxOrderAmt;     // Maximum order amount (deprecated)
+    currency<uint64_t> maxLimitOrderQty;     // Maximum limit order quantity
+    currency<uint64_t> maxMarketOrderQty;    // Maximum market order quantity
+    currency<uint64_t> postOnlyMaxLimitOrderSize;   // Maximum post-only/RPI order size
 
     // Flattened riskParameters fields
-    std::string priceLimitRatioX;       // Price limit ratio X
-    std::string priceLimitRatioY;       // Price limit ratio Y
+    currency<uint64_t> priceLimitRatioX;       // Price limit ratio X
+    currency<uint64_t> priceLimitRatioY;       // Price limit ratio Y
 };
 
 // Helper structures for nested JSON deserialization
 // These match the ByBit API nested structure
 namespace detail {
     struct PriceFilter {
-        std::string tickSize;
-        std::optional<std::string> minPrice;
-        std::optional<std::string> maxPrice;
+        currency<uint64_t> tickSize;
+        std::optional<currency<uint64_t>> minPrice;
+        std::optional<currency<uint64_t>> maxPrice;
     };
 
     struct LotSizeFilter {
-        std::string basePrecision;
-        std::string quotePrecision;
-        std::string minOrderQty;
-        std::string maxOrderQty;
-        std::string minOrderAmt;
-        std::string maxOrderAmt;
-        std::string maxLimitOrderQty;
-        std::string maxMarketOrderQty;
-        std::string postOnlyMaxLimitOrderSize;
+        currency<uint64_t> basePrecision;
+        currency<uint64_t> quotePrecision;
+        currency<uint64_t> minOrderQty;
+        currency<uint64_t> maxOrderQty;
+        currency<uint64_t> minOrderAmt;
+        currency<uint64_t> maxOrderAmt;
+        currency<uint64_t> maxLimitOrderQty;
+        currency<uint64_t> maxMarketOrderQty;
+        currency<uint64_t> postOnlyMaxLimitOrderSize;
     };
 
     struct RiskParameters {
-        std::string priceLimitRatioX;
-        std::string priceLimitRatioY;
+        currency<uint64_t> priceLimitRatioX;
+        currency<uint64_t> priceLimitRatioY;
     };
 }
 

@@ -63,3 +63,21 @@ TEST_CASE("Parse")
     CHECK(val.decimals() == 9);
     CHECK(val.multiplier() == 1000000000);
 }
+
+TEST_CASE("Integer-scale values round-trip without a trailing dot")
+{
+    // decimals == 0 must not append a '.', so the string round-trips back to currency.
+    CHECK(currency<uint64_t>("83").to_string() == "83");
+    CHECK(currency<uint64_t>("8000000").to_string() == "8000000");
+    CHECK(currency<uint64_t>{}.to_string() == "0");
+    CHECK(currency<uint64_t>(currency<uint64_t>("83").to_string()).raw() == 83);
+}
+
+TEST_CASE("raw_at rescales to a fixed decimal count")
+{
+    currency<uint64_t> px("16578.5");   // decimals 1, raw 165785
+    CHECK(px.raw_at(1) == 165785);      // same scale
+    CHECK(px.raw_at(2) == 1657850);     // widen
+    CHECK(px.raw_at(4) == 165785000);   // widen
+    CHECK(px.raw_at(0) == 16578);       // narrow, truncates toward zero
+}

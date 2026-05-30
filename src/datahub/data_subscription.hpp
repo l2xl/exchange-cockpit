@@ -48,7 +48,7 @@ public:
 };
 
 template<std::ranges::input_range Range, typename It>
-class data_subscription<Range, It, It>
+class data_subscription<Range, It>
 {
 public:
     using range_type = Range;
@@ -102,7 +102,7 @@ auto make_subscription(Callable&& cb)
         return std::shared_ptr<data_subscription<Range>>(
             std::make_shared<detail::subscription_impl<Range, cb_t>>(std::forward<Callable>(cb)));
     }
-    else if constexpr (std::is_invocable_v<cb_t&, update_kind, const Range&, It>) {
+    else if constexpr (std::is_invocable_v<cb_t&, update_kind, const Range&, It, It>) {
         return std::shared_ptr<data_subscription<Range, It>>(
             std::make_shared<detail::subscription_impl<Range, cb_t, It>>(std::forward<Callable>(cb)));
     }

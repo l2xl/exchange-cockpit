@@ -468,33 +468,17 @@ const std::string& InstrumentPanel::DefaultFontName() const
     return kDefaultFontName;
 }
 
-namespace {
-
-// Derive fractional-digit count from a tick-size string like "0.01" → 2, "1" → 0.
-// Trailing zeros after the decimal point ("0.10" → 1) are stripped so the resulting
-// scale matches the exchange's intent rather than the string's accidental padding.
-std::size_t DecimalsFromTickSize(const std::string& tick_size)
-{
-    if (tick_size.empty()) return 0;
-    const auto dot = tick_size.find('.');
-    if (dot == std::string::npos) return 0;
-    std::size_t end = tick_size.size();
-    while (end > dot + 1 && tick_size[end - 1] == '0') --end;
-    return end - dot - 1;
-}
-
-} // namespace
-
 void InstrumentPanel::SetInstrumentFeed(bybit::InstrumentInfo info,
                                         std::shared_ptr<const IDataController::public_trades_feed_type> feed)
 {
     mInstrument = std::move(info);
-    mPriceDecimals = DecimalsFromTickSize(mInstrument.tickSize);
+    // tickSize / basePrecision arrive already parsed as currency, so the fractional
+    // scale is just the value's own decimal count — no string scan needed.
+    mPriceDecimals = mInstrument.tickSize.decimals();
     // Volume scale comes from basePrecision (e.g. "0.000001" → 6 decimals for BTC).
     // Fallback to 8 (typical max precision) when basePrecision is unset so the
-    // currency parser doesn't reject sub-cent fractional sizes that exceed the
-    // declared scale.
-    const std::size_t base_decimals = DecimalsFromTickSize(mInstrument.basePrecision);
+    // currency rescale doesn't truncate sub-cent fractional sizes.
+    const std::size_t base_decimals = mInstrument.basePrecision.decimals();
     mSizeDecimals = base_decimals > 0 ? base_decimals : 8;
     mPublicTradesFeed = std::move(feed);
 }

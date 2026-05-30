@@ -111,12 +111,12 @@ Each feed takes a template-template `CacheContainer` parameter (default `std::de
 
 #### sorted_snapshot_data_feed<Entity, SortField, KeyField, CacheContainer = std::deque>
 - **Snapshot-only feed.** `subscription_type = subscription<cache_type>`
-- In-memory sorted cache that always delivers full state as snapshot on each update
+- Same as `sorted_data_feed` and optimized to deliver just full snapshot (no update bounds calculation)
 - `data_acceptor<InputRange>()` — filters by optional condition, merge-inserts sorted by `SortField` deduplicated by `KeyField`, notifies with full-cache snapshot
 
 #### keyed_snapshot_data_feed<Entity, KeyField, CacheContainer = std::deque>
 - **Snapshot-only feed.** `subscription_type = subscription<cache_type>`
-- In-memory keyed cache with upsert semantics: existing entries matched by `KeyField` are replaced, new entries are appended
+- In-memory keyed cache with upsert semantics: existing entries matched by `KeyField` are replaced, new entries are inserted
 - `data_acceptor<InputRange>()` — filters by optional condition, upserts by `KeyField`, notifies with full-cache snapshot
 
 #### db_data_feed<Entity>

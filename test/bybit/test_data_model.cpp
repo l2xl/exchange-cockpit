@@ -119,18 +119,18 @@ TEST_CASE("Write first", "[bybit][instruments]")
     CHECK(cached.status == bybit::InstrumentStatus::Trading);
     CHECK(cached.marginTrading == "none");
     CHECK(cached.stTag == "0");
-    CHECK(cached.tickSize == "0.5");
-    CHECK(cached.basePrecision == "0.000001");
-    CHECK(cached.quotePrecision == "0.01");
-    CHECK(cached.minOrderQty == "0.00001");
-    CHECK(cached.maxOrderQty == "10000");
-    CHECK(cached.minOrderAmt == "10");
-    CHECK(cached.maxOrderAmt == "500000");
-    CHECK(cached.maxLimitOrderQty == "10000");
-    CHECK(cached.maxMarketOrderQty == "5000");
-    CHECK(cached.postOnlyMaxLimitOrderSize == "10000");
-    CHECK(cached.priceLimitRatioX == "0.05");
-    CHECK(cached.priceLimitRatioY == "0.05");
+    CHECK(cached.tickSize.to_string() == "0.5");
+    CHECK(cached.basePrecision.to_string() == "0.000001");
+    CHECK(cached.quotePrecision.to_string() == "0.01");
+    CHECK(cached.minOrderQty.to_string() == "0.00001");
+    CHECK(cached.maxOrderQty.to_string() == "10000");
+    CHECK(cached.minOrderAmt.to_string() == "10");
+    CHECK(cached.maxOrderAmt.to_string() == "500000");
+    CHECK(cached.maxLimitOrderQty.to_string() == "10000");
+    CHECK(cached.maxMarketOrderQty.to_string() == "5000");
+    CHECK(cached.postOnlyMaxLimitOrderSize.to_string() == "10000");
+    CHECK(cached.priceLimitRatioX.to_string() == "0.05");
+    CHECK(cached.priceLimitRatioY.to_string() == "0.05");
 
     // Query back from the model and verify field values
     auto queried = model->query();
@@ -145,18 +145,18 @@ TEST_CASE("Write first", "[bybit][instruments]")
     CHECK(inst.status == bybit::InstrumentStatus::Trading);
     CHECK(inst.marginTrading == "none");
     CHECK(inst.stTag == "0");
-    CHECK(inst.tickSize == "0.5");
-    CHECK(inst.basePrecision == "0.000001");
-    CHECK(inst.quotePrecision == "0.01");
-    CHECK(inst.minOrderQty == "0.00001");
-    CHECK(inst.maxOrderQty == "10000");
-    CHECK(inst.minOrderAmt == "10");
-    CHECK(inst.maxOrderAmt == "500000");
-    CHECK(inst.maxLimitOrderQty == "10000");
-    CHECK(inst.maxMarketOrderQty == "5000");
-    CHECK(inst.postOnlyMaxLimitOrderSize == "10000");
-    CHECK(inst.priceLimitRatioX == "0.05");
-    CHECK(inst.priceLimitRatioY == "0.05");
+    CHECK(inst.tickSize.to_string() == "0.5");
+    CHECK(inst.basePrecision.to_string() == "0.000001");
+    CHECK(inst.quotePrecision.to_string() == "0.01");
+    CHECK(inst.minOrderQty.to_string() == "0.00001");
+    CHECK(inst.maxOrderQty.to_string() == "10000");
+    CHECK(inst.minOrderAmt.to_string() == "10");
+    CHECK(inst.maxOrderAmt.to_string() == "500000");
+    CHECK(inst.maxLimitOrderQty.to_string() == "10000");
+    CHECK(inst.maxMarketOrderQty.to_string() == "5000");
+    CHECK(inst.postOnlyMaxLimitOrderSize.to_string() == "10000");
+    CHECK(inst.priceLimitRatioX.to_string() == "0.05");
+    CHECK(inst.priceLimitRatioY.to_string() == "0.05");
 }
 
 namespace SQLite {

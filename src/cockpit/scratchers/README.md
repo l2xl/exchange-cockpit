@@ -39,7 +39,7 @@ This section pins down the data types and transforms across every layer of the r
 Notes on layer-1 typing:
 - Prices/orders/indicators are *only* `currency<uint64_t>`. No `double` math, no `currency<float>`, no ad-hoc `int64_t` price scaling at this layer.
 - Time is *only* `uint64_t` ms-since-epoch (UTC) at the boundary; in-memory the upstream model may keep `std::chrono::utc_clock::time_point` and convert via `get_timestamp()` exactly at the layer-1/2 cast.
-- Wire-format JSON strings (`PublicTrade::price`, `::time`, …) sit at layer 0. They are the data pipeline's concern; scratchers never see strings, and the eventual replacement of those `std::string` fields with `currency<uint64_t>` / `uint64_t` is out of the current scope.
+- Wire-format JSON sits at layer 0. The data pipeline now parses each fractional field into `currency<uint64_t>` once at deserialization (`PublicTrade::price`/`size`, instrument tick/precision, …), so scratchers receive fixed-point values and rescale to a fixed point count via `currency::raw_at()` — they never parse strings. `PublicTrade::time` stays a wire string (a millisecond timestamp, not a fractional value).
 
 ## 2. Direction rule
 
