@@ -14,11 +14,14 @@
 #ifndef SCRATCHER_DATA_CURRENCY_HPP
 #define SCRATCHER_DATA_CURRENCY_HPP
 
+#include <algorithm>
+#include <atomic>
 #include <concepts>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 namespace scratcher {
@@ -38,20 +41,49 @@ namespace {
     }
 }
 
-template<std::integral T/*, std::derived_from<fixed_point_spec> SPEC*/>
+namespace detail {
+// Underlying integer of a currency's storage. The storage may be a plain integral (closed
+// candles, entity fields) or a std::atomic integral (the single live "active" candle whose
+// fields are mutated by the data thread and snapshot-read by the render thread).
+template<class T> struct cur_underlying { using type = T; static constexpr bool is_atomic = false; };
+template<class U> struct cur_underlying<std::atomic<U>> { using type = U; static constexpr bool is_atomic = true; };
+}
+
+template<class T>
+requires (std::integral<T> || detail::cur_underlying<T>::is_atomic)
 class currency
 {
-    static constexpr T MAX_PARSE = std::numeric_limits<T>::max()/10;
-    size_t m_decimals;
-    T m_multiplier;
+public:
+    using value_type = typename detail::cur_underlying<T>::type;
+
+private:
+    static constexpr bool atomic_storage = detail::cur_underlying<T>::is_atomic;
+    using dec_storage = std::conditional_t<atomic_storage, std::atomic<size_t>, size_t>;
+    static constexpr value_type MAX_PARSE = std::numeric_limits<value_type>::max() / 10;
+
+    dec_storage m_decimals;
     T m_value;
 
+    // Single access seam for both storage flavours. The atomic loads/stores are what lets a
+    // currency<atomic> field be mutated and snapshot-read without a data race; (value,decimals)
+    // may still tear across the two members, which the active candle tolerates as a one-frame
+    // visual artefact (see BuoyCandleQuotes).
+    value_type val() const
+    { if constexpr (atomic_storage) return m_value.load(std::memory_order_acquire); else return m_value; }
+    void set_val(value_type v)
+    { if constexpr (atomic_storage) m_value.store(v, std::memory_order_release); else m_value = v; }
+    size_t dec() const
+    { if constexpr (atomic_storage) return m_decimals.load(std::memory_order_acquire); else return m_decimals; }
+    void set_dec(size_t d)
+    { if constexpr (atomic_storage) m_decimals.store(d, std::memory_order_release); else m_decimals = d; }
+
 public:
-    constexpr currency() : m_decimals(0), m_multiplier(1), m_value(0) {}
+    // constexpr-constructible (std::atomic has a constexpr value ctor too) so entity types holding
+    // currency fields stay usable in the compile-time metadata reflection (find_member_index).
+    constexpr currency() : m_decimals(0), m_value(0) {}
 
     template <std::integral I>
-    constexpr currency(I val, size_t decimals)
-        : m_decimals(decimals), m_multiplier(std::pow(10, decimals)), m_value(static_cast<T>(val)) {}
+    constexpr currency(I value, size_t decimals) : m_decimals(decimals), m_value(static_cast<value_type>(value)) {}
 
     explicit currency(std::string_view str) : currency(0, parse_presision_decimals(str))
     { parse(str); }
@@ -59,73 +91,100 @@ public:
     explicit currency(std::string_view str, size_t decimals) : currency(0, decimals)
     { parse(str); }
 
-    currency(const currency& c) = default;
+    // Copy and cross-storage conversion go through the accessor seam: atomic members forbid a
+    // defaulted copy, and load/store is exactly how the active (atomic) candle is seeded from
+    // and snapshot into the plain closed-candle currencies.
+    currency(const currency& c) : m_decimals(c.dec()), m_value(c.val()) {}
+    template <class O> currency(const currency<O>& c) : m_decimals(c.decimals()), m_value(static_cast<value_type>(c.raw())) {}
 
-    currency& operator=(const currency& c) = default;
+    currency& operator=(const currency& c) { set_dec(c.dec()); set_val(c.val()); return *this; }
+    template <class O> currency& operator=(const currency<O>& c) { set_dec(c.decimals()); set_val(static_cast<value_type>(c.raw())); return *this; }
 
-    currency operator-() const { return currency(-m_value, m_decimals); }
+    currency<value_type> operator-() const { return currency<value_type>(static_cast<value_type>(0) - val(), dec()); }
 
-    currency& negate() { m_value = -m_value; return *this; }
+    currency& negate() { set_val(static_cast<value_type>(0) - val()); return *this; }
 
     template <std::integral I>
     void set_raw(I raw)
-    { m_value = static_cast<T>(raw); }
+    { set_val(static_cast<value_type>(raw)); }
 
-    bool operator==(const currency& c) const
-    {
-        if (m_multiplier == c.m_multiplier)
-            return m_value == c.m_value;
-        if (m_decimals < c.m_decimals)
-            return (m_value * std::pow(10, c.m_decimals - m_decimals)) == c.m_value;
+    // Comparison and arithmetic reconcile differing scales through raw_at (integer rescale),
+    // never floating point, so two wire values parsed with their own decimal counts compare and
+    // combine exactly. Results carry the natural fixed-point scale: +/- keep the wider scale,
+    // * sums the operands' scales, / subtracts them (the volume-weighted mean's notional/volume
+    // therefore lands back on the price scale).
+    template <class O> bool operator==(const currency<O>& c) const
+    { const size_t d = std::max(dec(), c.decimals()); return raw_at(d) == c.raw_at(d); }
 
-        return m_value == (c.m_value * std::pow(10, m_decimals - c.m_decimals));
-    }
-
-    bool operator!=(const currency& c) const
+    template <class O> bool operator!=(const currency<O>& c) const
     { return !operator==(c); }
 
-    bool operator<(const currency& c) const
-    {
-        if (m_multiplier == c.m_multiplier)
-            return m_value < c.m_value;
-        if (m_decimals < c.m_decimals)
-            return (m_value * std::pow(10, c.m_decimals - m_decimals)) < c.m_value;
+    template <class O> bool operator<(const currency<O>& c) const
+    { const size_t d = std::max(dec(), c.decimals()); return raw_at(d) < c.raw_at(d); }
 
-        return m_value < (c.m_value * std::pow(10, m_decimals - c.m_decimals));
+    template <class O> bool operator>(const currency<O>& c) const
+    { return c < *this; }
+
+    template <class O> bool operator<=(const currency<O>& c) const
+    { return !(c < *this); }
+
+    template <class O> bool operator>=(const currency<O>& c) const
+    { return !(*this < c); }
+
+    template <class O> currency<value_type> operator+(const currency<O>& c) const
+    { const size_t d = std::max(dec(), c.decimals()); return currency<value_type>(raw_at(d) + c.raw_at(d), d); }
+
+    template <class O> currency<value_type> operator-(const currency<O>& c) const
+    { const size_t d = std::max(dec(), c.decimals()); return currency<value_type>(raw_at(d) - c.raw_at(d), d); }
+
+    template <class O> currency<value_type> operator*(const currency<O>& c) const
+    { return currency<value_type>(val() * static_cast<value_type>(c.raw()), dec() + c.decimals()); }
+
+    template <class O> currency<value_type> operator/(const currency<O>& c) const
+    {
+        const size_t dn = dec(), dd = c.decimals();
+        if (dn >= dd) return currency<value_type>(val() / static_cast<value_type>(c.raw()), dn - dd);
+        value_type factor = 1;
+        for (size_t i = dn; i < dd; ++i) factor *= 10;
+        return currency<value_type>((val() * factor) / static_cast<value_type>(c.raw()), 0);
     }
 
-    const T& raw() const
-    { return m_value; }
+    value_type raw() const
+    { return val(); }
 
     size_t decimals() const
-    { return m_decimals; }
+    { return dec(); }
 
-    const T& multiplier() const
-    { return m_multiplier; }
+    value_type multiplier() const
+    { value_type m = 1; for (size_t i = 0, n = dec(); i < n; ++i) m *= 10; return m; }
 
     // Raw value rescaled to a fixed number of fractional decimals (truncating toward
     // zero on narrowing). Lets a consumer normalise wire values that were each parsed
     // with their own scale onto one instrument-wide scale without re-parsing strings.
-    T raw_at(size_t decimals) const
+    value_type raw_at(size_t decimals) const
     {
-        if (decimals == m_decimals) return m_value;
-        T factor = 1;
-        if (decimals > m_decimals) {
-            for (size_t i = m_decimals; i < decimals; ++i) factor *= 10;
-            return static_cast<T>(m_value * factor);
+        const size_t md = dec();
+        const value_type v = val();
+        if (decimals == md) return v;
+        value_type factor = 1;
+        if (decimals > md) {
+            for (size_t i = md; i < decimals; ++i) factor *= 10;
+            return static_cast<value_type>(v * factor);
         }
-        for (size_t i = decimals; i < m_decimals; ++i) factor *= 10;
-        return static_cast<T>(m_value / factor);
+        for (size_t i = decimals; i < md; ++i) factor *= 10;
+        return static_cast<value_type>(v / factor);
     }
 
     std::string to_string() const
     {
-        bool negative = m_value < 0;
-        T abs_val = negative ? -m_value : m_value;
+        const value_type v = val();
+        const size_t md = dec();
+        bool negative = v < 0;
+        value_type abs_val = negative ? static_cast<value_type>(0) - v : v;
         std::string res = std::to_string(abs_val);
-        if (m_decimals > 0) {
-            while (res.length() < m_decimals + 1) res.insert(res.begin(), '0');
-            res.insert(res.end() - m_decimals, '.');
+        if (md > 0) {
+            while (res.length() < md + 1) res.insert(res.begin(), '0');
+            res.insert(res.end() - md, '.');
         }
         if (negative) res.insert(res.begin(), '-');
         return res;
@@ -134,10 +193,11 @@ public:
     currency& parse(std::string_view str)
     {
         static const std::string delims = ".,' ";
+        const size_t md = dec();
         bool is_decimal = false;
         bool negative = false;
         size_t decimals = 0;
-        T value = 0;
+        value_type value = 0;
 
         auto it = str.begin();
         if (it != str.end() && *it == '-') { negative = true; ++it; }
@@ -149,26 +209,26 @@ public:
                 if (c == '.') is_decimal = true;
                 continue;
             }
-            if (decimals > m_decimals && c != '0') throw std::overflow_error("decimals length: " + std::string(str));
+            if (decimals > md && c != '0') throw std::overflow_error("decimals length: " + std::string(str));
             if (value > MAX_PARSE) throw std::overflow_error(std::string(str));
 
             value *= 10;
             if (is_decimal) ++decimals;
 
             if (c >= '1' && c <= '9') {
-                T step = c - '1' + 1;
-                if (std::numeric_limits<T>::max() - step < value) throw std::overflow_error(std::string(str));
+                value_type step = c - '1' + 1;
+                if (std::numeric_limits<value_type>::max() - step < value) throw std::overflow_error(std::string(str));
                 value += step;
             }
             else if (c != '0') throw std::invalid_argument(std::string(str));
         }
 
-        if (decimals < m_decimals)
-            value *= std::pow(10, m_decimals - decimals);
-        else if (decimals > m_decimals)
-            value /= std::pow(10, decimals - m_decimals);
+        if (decimals < md)
+            value *= std::pow(10, md - decimals);
+        else if (decimals > md)
+            value /= std::pow(10, decimals - md);
 
-        m_value = negative ? -value : value;
+        set_val(negative ? static_cast<value_type>(0) - value : value);
         return *this;
     }
 

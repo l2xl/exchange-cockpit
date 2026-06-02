@@ -23,6 +23,7 @@
 #include <optional>
 #include <tbb/concurrent_vector.h>
 
+#include "currency.hpp"
 #include "data_rectangle.hpp"
 #include "timedef.hpp"
 
@@ -79,16 +80,39 @@ struct BuoyCandleData
 
 class BuoyCandleQuotes {
 public:
-    typedef BuoyCandleData<uint64_t, uint64_t> candle_t;
+    // Prices/volumes are carried as currency<uint64_t> straight from the wire PublicTrade, so the
+    // candle keeps the exchange's fixed-point values verbatim; currency reconciles per-trade scale
+    // differences. No instrument decimals live here — conversion to scene "points" happens only at
+    // the ThorVG boundary (QuoteScratcher, via Currency::raw_at + InstrumentInfo).
+    typedef currency<uint64_t> price_t;
+    typedef BuoyCandleData<price_t, price_t> candle_t;
     typedef tbb::concurrent_vector<candle_t> quotes_t;
 private:
+    // The active candle is mutated by the data thread and snapshot-read by the render thread, so
+    // its fields use currency-over-atomic storage.
+    typedef currency<std::atomic_uint64_t> atomic_price_t;
+
     const uint64_t m_buoy_duration;
 
     std::optional<std::atomic_uint64_t> m_first_buoy_timestamp;
     std::optional<std::atomic_uint64_t> m_first_trade_timestamp;
     std::optional<std::atomic_uint64_t> m_last_trade_timestamp;
     quotes_t m_buoy_data;
-    BuoyCandleData<std::atomic_uint64_t, std::atomic_uint64_t> mCurCandle;;
+    BuoyCandleData<atomic_price_t, atomic_price_t> mCurCandle;
+
+    // In-place reset of the persistent active candle. The object is never reconstructed — a
+    // concurrent active_candle() reader sees field-wise atomic stores. volume is stored last so
+    // any intermediate state a reader observes is a consistent zero-extent (lone-trade) candle
+    // rather than a torn extent (a torn currency value/decimals pair is a tolerated one-frame
+    // visual artefact, consistent with the pre-existing torn-snapshot allowance).
+    void reset_active(const price_t& price)
+    {
+        mCurCandle.min = price;
+        mCurCandle.max = price;
+        mCurCandle.mean = price;
+        mCurCandle.close = price;
+        mCurCandle.volume = price_t{};
+    }
 
 public:
     explicit BuoyCandleQuotes(uint64_t candle_time)
@@ -113,89 +137,96 @@ public:
     candle_t active_candle() const
     { return mCurCandle; }
 
+    // Rewind the series so the next AppendTrades rebuilds from scratch. Clears the
+    // trade bookmarks too (not just the first-buoy anchor) so a snapshot rebuild does
+    // not dedup incoming trades against a stale last-seen timestamp.
     void Reset()
-    { m_first_buoy_timestamp.reset(); }
+    {
+        m_first_buoy_timestamp.reset();
+        m_first_trade_timestamp.reset();
+        m_last_trade_timestamp.reset();
+    }
 
     template <std::ranges::input_range Range>
     requires requires(std::ranges::range_value_t<Range> trade) {
-        trade.trade_time;
-        trade.price_points;
-        trade.volume_points;
+        trade.time;
+        trade.price;
+        trade.size;
     }
-    uint64_t AppendTrades(const Range& trades, uint64_t now_ts, uint64_t last_price)
+    price_t AppendTrades(const Range& trades, price_t last_price)
     {
-        if (!trades.empty()) {
+        if (trades.empty())
+            return last_price;
 
-            uint64_t first_ts = get_timestamp(std::ranges::begin(trades)->trade_time);
+        uint64_t first_ts = get_timestamp((*std::ranges::begin(trades)).time);
 
-            if (!m_first_buoy_timestamp) { // indicates that Reset() was called
-                mCurCandle = candle_t(last_price, last_price, last_price, last_price, 0);
-                m_buoy_data.clear();
-                m_first_trade_timestamp.emplace(first_ts);
-                m_first_buoy_timestamp.emplace(first_ts - first_ts % buoy_duration());
-                m_last_trade_timestamp.reset();
-            }
-
-            if (m_buoy_data.size() > 0 && first_ts < *m_first_buoy_timestamp + (m_buoy_data.size() - 1) * m_buoy_duration)
-                throw std::invalid_argument("Trade time earlier then first candle time");
-
-            if (m_last_trade_timestamp && first_ts < *m_last_trade_timestamp)
-                throw std::invalid_argument("Trade time earlier then last processed trade time");
-
-            uint64_t next_buoy_ts = *m_first_buoy_timestamp + m_buoy_data.size() * buoy_duration();
-            uint64_t trade_ts = 0; // Will not be empty since trades is not empty
-            for(auto it = std::ranges::begin(trades); it != std::ranges::end(trades); ++it) {
-                trade_ts = get_timestamp(it->trade_time);
-
-                while (trade_ts >= next_buoy_ts) {
-                    if (mCurCandle.volume > 0 || !m_buoy_data.empty()) {
-                        candle_t buoy = mCurCandle;
-                        mCurCandle = candle_t(last_price, last_price, last_price, last_price, 0);
-                        m_buoy_data.emplace_back(buoy);
-                    }
-                    next_buoy_ts += buoy_duration();
-                }
-
-                uint64_t last_volume = mCurCandle.volume.load();
-                uint64_t sum_volume = last_volume + it->volume_points;
-
-                if (last_volume == 0) {
-                    // First trade of the period: the buoy opens AT the trade price, not at
-                    // the carried-forward previous close. A lone-trade buoy is therefore a
-                    // zero-extent diamond (min == max == mean == price); the move from the
-                    // previous close is indicated separately by the scratcher, not by
-                    // widening this candle. The carried close still seeds empty buoys for
-                    // the gray dash (see the reset above) but is overwritten the instant a
-                    // trade lands.
-                    mCurCandle.max = it->price_points;
-                    mCurCandle.min = it->price_points;
-                    mCurCandle.mean = it->price_points;
-                } else {
-                    mCurCandle.max = std::max(it->price_points, mCurCandle.max.load());
-                    mCurCandle.min = std::min(it->price_points, mCurCandle.min.load());
-                    mCurCandle.mean = (mCurCandle.mean.load() * last_volume + it->price_points * it->volume_points) / sum_volume;
-                }
-                mCurCandle.close = it->price_points;
-                mCurCandle.volume = sum_volume;
-
-                last_price = it->price_points;
-            }
-            m_last_trade_timestamp.emplace(trade_ts);
+        if (!m_first_buoy_timestamp) { // indicates that Reset() was called
+            reset_active(last_price);
+            m_buoy_data.clear();
+            m_first_trade_timestamp.emplace(first_ts);
+            m_first_buoy_timestamp.emplace(first_ts - first_ts % buoy_duration());
+            m_last_trade_timestamp.reset();
         }
 
-        if (m_first_buoy_timestamp) {
-            uint64_t active_buoy_ts = now_ts - now_ts % buoy_duration();
-            uint64_t next_buoy_ts = *m_first_buoy_timestamp + m_buoy_data.size() * buoy_duration();
-            while (active_buoy_ts > next_buoy_ts) {
-                candle_t buoy = mCurCandle;
-                mCurCandle = candle_t(last_price, last_price, last_price, last_price, 0);
-                m_buoy_data.push_back(buoy);
+        if (m_buoy_data.size() > 0 && first_ts < *m_first_buoy_timestamp + (m_buoy_data.size() - 1) * m_buoy_duration)
+            throw std::invalid_argument("Trade time earlier then first candle time");
+
+        if (m_last_trade_timestamp && first_ts < *m_last_trade_timestamp)
+            throw std::invalid_argument("Trade time earlier then last processed trade time");
+
+        uint64_t next_buoy_ts = *m_first_buoy_timestamp + m_buoy_data.size() * buoy_duration();
+        uint64_t trade_ts = 0; // Will not be empty since trades is not empty
+        for(auto it = std::ranges::begin(trades); it != std::ranges::end(trades); ++it) {
+            // Bind the element once: the range is the feed's native PublicTrade subrange (its
+            // iterator may yield a prvalue and provide no operator->), so a single dereference
+            // both satisfies the access pattern and reads each wire trade exactly once.
+            const auto& trade = *it;
+            trade_ts = get_timestamp(trade.time);
+
+            while (trade_ts >= next_buoy_ts) {
+                if (mCurCandle.volume.raw() > 0 || !m_buoy_data.empty()) {
+                    candle_t buoy = mCurCandle;
+                    reset_active(last_price);
+                    m_buoy_data.emplace_back(buoy);
+                }
                 next_buoy_ts += buoy_duration();
             }
+
+            price_t last_volume = mCurCandle.volume;
+            price_t sum_volume = last_volume + trade.size;
+
+            if (last_volume.raw() == 0) {
+                // First trade of the period: the buoy opens AT the trade price, not at
+                // the carried-forward previous close. A lone-trade buoy is therefore a
+                // zero-extent diamond (min == max == mean == price); the move from the
+                // previous close is indicated separately by the scratcher, not by
+                // widening this candle. The carried close still seeds empty buoys for
+                // the gray dash (see the reset above) but is overwritten the instant a
+                // trade lands.
+                mCurCandle.max = trade.price;
+                mCurCandle.min = trade.price;
+                mCurCandle.mean = trade.price;
+            } else {
+                if (mCurCandle.max < trade.price) mCurCandle.max = trade.price;
+                if (trade.price < mCurCandle.min) mCurCandle.min = trade.price;
+                mCurCandle.mean = (mCurCandle.mean * last_volume + trade.price * trade.size) / sum_volume;
+            }
+            mCurCandle.close = trade.price;
+            mCurCandle.volume = sum_volume;
+
+            last_price = trade.price;
         }
+        m_last_trade_timestamp.emplace(trade_ts);
 
         return last_price;
     }
+
+    // Time-driven advance: fill-forward empty buoys and roll the active candle up to
+    // `now_ts`, carrying `last_price` into each empty period. Carries NO trade data —
+    // this is the only series mutation the time/scroll path performs, decoupled from
+    // AppendTrades so a wall-clock tick advances the live edge without re-ingesting.
+    // Cheap when now_ts has not crossed the next buoy boundary (loop body skipped).
+    void AdvanceTo(uint64_t now_ts, price_t last_price);
 };
 
 }

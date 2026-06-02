@@ -14,16 +14,12 @@
 #include "quote_scratcher.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
-#include <exception>
 #include <limits>
 #include <optional>
-#include <ranges>
-#include <utility>
-#include <vector>
 
-#include "bybit/entities/public_trade.hpp"
-#include "currency.hpp"
 #include "instrument_panel.hpp"
 #include "timedef.hpp"
 
@@ -68,7 +64,7 @@ const BuoyCandleQuotes::candle_t* PrevFilledBuoy(const BuoyCandleQuotes::quotes_
                                                  std::size_t idx)
 {
     for (std::size_t j = idx; j-- > 0; ) {
-        if (closed[j].volume > 0) return &closed[j];
+        if (closed[j].volume.raw() > 0) return &closed[j];
     }
     return nullptr;
 }
@@ -90,14 +86,18 @@ void AppendBuoy(tvg::Shape& wicks_green, tvg::Shape& wicks_red,
                 const BuoyCandleQuotes::candle_t& prev,
                 const SceneFloor& floor,
                 const ScenePixelSize& px,
-                float candle_width_px)
+                float candle_width_px,
+                std::size_t price_decimals)
 {
+    // Candle prices are currency carried verbatim from the wire; the scene works in integer
+    // "points" on the instrument's price grid, so project each currency to that grid here via
+    // raw_at(price_decimals) — the one place wire scale becomes scene coordinates.
     const float left_x  = SubToFloat(buoy_ts, floor.time_ms);
     const float right_x = SubToFloat(buoy_ts + duration, floor.time_ms);
     const float mid_x   = 0.5f * (left_x + right_x);
-    const float mean_y  = SubToFloat(curr.mean, floor.price_points);
+    const float mean_y  = SubToFloat(curr.mean.raw_at(price_decimals), floor.price_points);
 
-    if (curr.volume == 0) {
+    if (curr.volume.raw() == 0) {
         // Empty buoy — no trades arrived during the period. Carry the previous last
         // price forward as a 0.5 px-tall gray rect; in this state the model has
         // min == max == mean == last_price, so neither wicks nor a body would have
@@ -111,8 +111,8 @@ void AppendBuoy(tvg::Shape& wicks_green, tvg::Shape& wicks_red,
         return;
     }
 
-    const float min_y = SubToFloat(curr.min, floor.price_points);
-    const float max_y = SubToFloat(curr.max, floor.price_points);
+    const float min_y = SubToFloat(curr.min.raw_at(price_decimals), floor.price_points);
+    const float max_y = SubToFloat(curr.max.raw_at(price_decimals), floor.price_points);
 
     // Flatten each wick apex into a 0.5 px-wide horizontal edge so the tip reads as a
     // crisp short cap rather than a needle-thin point that the rasterizer thins to
@@ -160,7 +160,7 @@ void AppendBuoy(tvg::Shape& wicks_green, tvg::Shape& wicks_red,
     // Z-order), so the inner segment is hidden and only the part outside [min, max]
     // (previous close → nearest tip) shows — a stem from the prior close to the candle edge.
     if (prev.close > curr.max || prev.close < curr.min) {
-        const float prev_close_y = SubToFloat(prev.close, floor.price_points);
+        const float prev_close_y = SubToFloat(prev.close.raw_at(price_decimals), floor.price_points);
         // 1 px wide (not 0.5 px). A sub-pixel-width filled rect distributes its
         // anti-aliased coverage differently as its screen-x sweeps sub-pixel positions
         // under scroll — one ~50% column vs two ~25% columns — which the eye reads as a
@@ -249,118 +249,33 @@ void QuoteScratcher::OnDetach(InstrumentPanel& /*panel*/)
     mEmittedPxSizeY = 0.0f;
 }
 
-namespace {
-
-// Pull the wire-format trades strictly newer than `after_ts` from the feed snapshot
-// and adapt them into the three-field record the IngestTrades concept consumes.
-// Malformed strings are skipped; the wire feed is best-effort.
-struct PublicTradeRecord
+uint64_t QuoteScratcher::WallNowMs()
 {
-    time_point trade_time;
-    uint64_t   price_points;
-    uint64_t   volume_points;
-};
-
-std::vector<PublicTradeRecord> PullAdapted(
-    const std::deque<bybit::PublicTrade>& snapshot,
-    uint64_t after_ts,
-    std::size_t price_decimals,
-    std::size_t size_decimals)
-{
-    auto begin = snapshot.begin();
-    const auto end = snapshot.end();
-    if (after_ts > 0) {
-        begin = std::upper_bound(begin, end, after_ts,
-            [](uint64_t v, const bybit::PublicTrade& t) {
-                try { return v < static_cast<uint64_t>(std::stoll(t.time)); }
-                catch (...) { return false; }
-            });
-    }
-    std::vector<PublicTradeRecord> out;
-    if (begin == end) return out;
-    out.reserve(static_cast<std::size_t>(std::distance(begin, end)));
-    for (auto it = begin; it != end; ++it) {
-        try {
-            // Construct the time_point directly from the wire-ms count rather
-            // than going through utc_clock::from_sys, which would add the
-            // current leap-second offset (~27 s in 2026) and de-sync our
-            // last_seen bookmark from the feed's wire timestamps.
-            // price/size are already parsed currency from the feed — rescale (no
-            // re-parse) to the instrument's fixed point count for candle math.
-            out.push_back(PublicTradeRecord{
-                .trade_time = time_point{milliseconds{std::stoll(it->time)}},
-                .price_points  = it->price.raw_at(price_decimals),
-                .volume_points = it->size.raw_at(size_decimals),
-            });
-        }
-        catch (const std::exception&) {
-            // Skip malformed wire record.
-        }
-    }
-    return out;
+    return std::chrono::duration_cast<milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-}
-
-void QuoteScratcher::CalculateSize(InstrumentPanel& panel)
+void QuoteScratcher::PriceAutoscale(InstrumentPanel& panel)
 {
-    // 1) Drain new trades from the cockpit-provided datahub feed AND advance the
-    //    candle series clock. Even when the slice past last_seen is empty,
-    //    IngestTrades calls AppendTrades so its fill-forward loop pushes empty
-    //    buoys for every elapsed period — without that, the active candle stays
-    //    pinned in the past while live mode's view_left scrolls right, producing
-    //    the "long gap, then sudden burst of empty buoys when the next trade
-    //    arrives" pattern. The feed snapshot is the sorted authoritative deque
-    //    maintained by the data manager; we slice the tail past last_seen.
-    if (const auto& feed = panel.PublicTradesFeed(); feed) {
-        const uint64_t last_seen = mQuotes.last_trade_timestamp().value_or(0);
-        auto adapted = PullAdapted(feed->get_snapshot(), last_seen, panel.PriceDecimals(), panel.SizeDecimals());
-        try {
-            IngestTrades(adapted);
-        }
-        catch (const std::exception&)
-        { /* one malformed batch must not stall */ }
-    }
-
-    // Visible-window geometry, used both for time-floor hysteresis and the
-    // visible-only price autoscale below.
-    const int64_t view_left = panel.ViewLeftTimeMs();
-    const int64_t period_ms = static_cast<int64_t>(panel.CandlePeriod().count()) * 1000;
-    const int64_t cwidth    = std::max<int64_t>(1, panel.CandleWidth());
-    const int64_t inner_w   = std::max(1, panel.InnerDataRect().width());
-    const int64_t span_ms   = (inner_w * period_ms) / cwidth;
+    // Visible-window geometry for the autoscale span. Recomputed only on data arrival — as the
+    // view scrolls between trades the window is left as-is (the scale follows on the next
+    // trade, sub-second on a live feed), which keeps zoom/scroll free of price rescans.
+    const int64_t view_left  = panel.ViewLeftTimeMs();
+    const int64_t period_ms  = static_cast<int64_t>(panel.CandlePeriod().count()) * 1000;
+    const int64_t cwidth     = std::max<int64_t>(1, panel.CandleWidth());
+    const int64_t inner_w    = std::max(1, panel.InnerDataRect().width());
+    const int64_t span_ms    = (inner_w * period_ms) / cwidth;
     const int64_t view_right = view_left + span_ms;
 
-    // 1b) Anchor the TIME floor one panel-width of scene-time BEFORE the current
-    //     view-left edge. That keeps every visible (t − floor) inside roughly
-    //     [span, 2·span] ms of float-exact range, defeating the catastrophic-
-    //     cancellation pattern in the LogicalScene X composition
-    //     (hud_x = e11·(t−floor) + e13 with e13 ≈ −e11·(view_left−floor)).
-    //
-    //     A hysteresis band (current must be > view_left − span/2 to be considered
-    //     "too close", or < view_left − 3·span to be "too far back") lets the
-    //     floor stay put as the view drifts naturally to the right; otherwise
-    //     a live-mode frame would refloor every tick and invalidate the
-    //     persistent closed-buoy shape pool on every animation cycle.
-    {
-        const int64_t desired   = view_left - span_ms;
-        const int64_t current   = static_cast<int64_t>(panel.GetSceneFloor().time_ms);
-        const bool too_close    = current > view_left - span_ms / 2;
-        const bool too_far_back = current < view_left - 3 * span_ms;
-        if (too_close || too_far_back) {
-            SceneFloor sf = panel.GetSceneFloor();
-            sf.time_ms = static_cast<uint64_t>(std::max<int64_t>(0, desired));
-            panel.SetSceneFloor(sf);
-        }
-    }
-
-    // 2) Compute the price extent across VISIBLE buoys only. Closed buoys are
+    // Compute the price extent across VISIBLE buoys only. Closed buoys are
     //    append-only and never evicted, so using all-historical extents would let
     //    e22 shrink monotonically with session length and squash recent candles
     //    into a thin band. Restricting to [view_left, view_right] gives a tight
     //    autoscale that follows the current viewport. Empty buoys (volume == 0)
     //    contribute their carried-forward last_price level via min == max, which
     //    keeps the level visible without expanding the range.
+    // Extents are accumulated in scene points (the instrument's price grid), projecting each
+    // candle's currency via raw_at — the same grid SceneFloor.price_points lives on.
+    const std::size_t pd = panel.PriceDecimals();
     uint64_t p_min = std::numeric_limits<uint64_t>::max();
     uint64_t p_max = 0;
     const auto first_ts_opt = mQuotes.first_buoy_timestamp();
@@ -375,25 +290,25 @@ void QuoteScratcher::CalculateSize(InstrumentPanel& panel)
                 std::max<int64_t>(0, (view_right - first_ts) / duration + 1));
             for (int64_t i = v_from; i < v_to_excl; ++i) {
                 const auto& buoy = closed[static_cast<std::size_t>(i)];
-                p_min = std::min(p_min, buoy.min);
-                p_max = std::max(p_max, buoy.max);
+                p_min = std::min(p_min, buoy.min.raw_at(pd));
+                p_max = std::max(p_max, buoy.max.raw_at(pd));
             }
         }
         const auto active = mQuotes.active_candle();
-        if (active.volume > 0) {
-            p_min = std::min(p_min, active.min);
-            p_max = std::max(p_max, active.max);
-        } else if (active.mean > 0) {
+        if (active.volume.raw() > 0) {
+            p_min = std::min(p_min, active.min.raw_at(pd));
+            p_max = std::max(p_max, active.max.raw_at(pd));
+        } else if (active.mean.raw() > 0) {
             // Empty active candle still represents a real price level (= last trade
             // price carried forward by AppendTrades fill-forward) — include it so a
             // long no-trade gap keeps the carried-forward dash on screen.
-            p_min = std::min(p_min, active.mean);
-            p_max = std::max(p_max, active.mean);
+            p_min = std::min(p_min, active.mean.raw_at(pd));
+            p_max = std::max(p_max, active.mean.raw_at(pd));
         }
     }
     if (p_min == std::numeric_limits<uint64_t>::max()) return;  // no data yet — leave matrix as-is
 
-    // 3) Refloor when the live data either escapes the current window (expansion)
+    // Refloor when the live data either escapes the current window (expansion)
     //    or sits inside less than half of it (contraction — happens after a price
     //    spike scrolls off-screen). The contraction guard requires data_range > 0
     //    so a flat zero-range visible window does not retrigger on every frame.
@@ -422,17 +337,66 @@ void QuoteScratcher::CalculateSize(InstrumentPanel& panel)
             panel.SetSceneFloor(floor);  // QuoteScratcher::OnLayout detects this and re-emits closed shapes
         }
     }
+}
 
-    // 4) Re-derive the price-axis scale every frame: inner-rect height can change
-    //    on resize without invalidating the window, and ApplyLogicalSceneTransform
-    //    (called after CalculateSize) preserves whatever e22 we leave in cur.
-    const int H = std::max(1, panel.InnerDataRect().height());
-    const float e22 = static_cast<float>(H) / static_cast<float>(mScaleTopPrice - mScaleFloorPrice);
-    const tvg::Matrix cur = panel.LogicalScene().transform();
-    if (cur.e22 != e22) {
-        panel.LogicalScene().transform(tvg::Matrix{cur.e11, 0.0f, cur.e13,
-                                                    0.0f,    e22,  cur.e23,
-                                                    0.0f,    0.0f, 1.0f});
+void QuoteScratcher::TimeFloorRefloor(InstrumentPanel& panel)
+{
+    // The LogicalScene X transform renders geometry as x = e11·(t−floor) + e13 in float32, and
+    // the large (·−floor) term cancels — so the worst on-screen rounding is
+    // ~ e11 · (view_right − floor) · 2⁻²⁴ px. Refloor only when that projected error would
+    // exceed a sub-pixel tolerance: for normal periods this is days/years of continuous scroll
+    // apart, otherwise triggering on zoom (an e11 change), so steady scrolling never rebuilds
+    // geometry. The new floor sits one span behind view_left so a little left-pan stays precise.
+    const int64_t view_left  = panel.ViewLeftTimeMs();
+    const int64_t period_ms  = static_cast<int64_t>(panel.CandlePeriod().count()) * 1000;
+    const int64_t cwidth     = std::max<int64_t>(1, panel.CandleWidth());
+    const int64_t inner_w    = std::max(1, panel.InnerDataRect().width());
+    const int64_t span_ms    = (inner_w * period_ms) / cwidth;
+    const int64_t view_right = view_left + span_ms;
+
+    const tvg::Matrix m      = panel.LogicalScene().transform();
+    const double  e11        = std::abs(static_cast<double>(m.e11));
+    const int64_t floor_ms   = static_cast<int64_t>(panel.GetSceneFloor().time_ms);
+
+    constexpr double kFloat32Ulp   = 1.0 / 16777216.0;   // 2⁻²⁴
+    constexpr double kRefloorTolPx = 0.5;
+    const double err_px = e11 * static_cast<double>(std::max<int64_t>(0, view_right - floor_ms)) * kFloat32Ulp;
+
+    const bool precision_breach = err_px > kRefloorTolPx;
+    const bool floor_ahead      = floor_ms > view_left;   // floor must stay at/behind the left edge
+    if (precision_breach || floor_ahead) {
+        SceneFloor sf = panel.GetSceneFloor();
+        sf.time_ms = static_cast<uint64_t>(std::max<int64_t>(0, view_left - span_ms));
+        panel.SetSceneFloor(sf);
+    }
+}
+
+void QuoteScratcher::CalculateSize(InstrumentPanel& panel)
+{
+    // Time/scroll path: advance the live edge and keep the transform consistent with the
+    // current layout. NO trade ingestion or price-window rescan — those are data-driven
+    // (IngestAndScale). Everything here is gated so a steady tick mutates nothing expensive.
+
+    // Advance the candle clock: fill-forward empty buoys + roll the active candle to now.
+    // Cheap unless a buoy boundary was crossed.
+    mQuotes.AdvanceTo(WallNowMs(), mLastPrice);
+
+    // Defensive precision refloor of the time axis (replaces the old per-2-span hysteresis).
+    TimeFloorRefloor(panel);
+
+    // Re-derive the price-axis scale for the current inner height — this is what makes a resize
+    // (height change without new data) take effect. The price window itself is owned by the
+    // data path; skip until it exists. ApplyLogicalSceneTransform (run right after) preserves
+    // whatever e22 we leave in the matrix.
+    if (mScaleTopPrice > mScaleFloorPrice) {
+        const int H = std::max(1, panel.InnerDataRect().height());
+        const float e22 = static_cast<float>(H) / static_cast<float>(mScaleTopPrice - mScaleFloorPrice);
+        const tvg::Matrix cur = panel.LogicalScene().transform();
+        if (cur.e22 != e22) {
+            panel.LogicalScene().transform(tvg::Matrix{cur.e11, 0.0f, cur.e13,
+                                                        0.0f,    e22,  cur.e23,
+                                                        0.0f,    0.0f, 1.0f});
+        }
     }
 }
 
@@ -444,6 +408,7 @@ void QuoteScratcher::OnLayout(InstrumentPanel& panel)
     const SceneFloor& floor = panel.GetSceneFloor();
     const ScenePixelSize px = panel.PixelSizeOf(panel.LogicalScene());
     const float candle_w_px = static_cast<float>(panel.CandleWidth());
+    const std::size_t pd = panel.PriceDecimals();
 
     // Closed-pool invalidation: any of (a) series anchor moved, (b) scene floor
     // repositioned, (c) Y pixel size changed (diamond half-height and gray dash
@@ -502,7 +467,7 @@ void QuoteScratcher::OnLayout(InstrumentPanel& panel)
         AppendBuoy(*mClosedWicksGreenShape, *mClosedWicksRedShape,
                    *mClosedBodyGreenShape,  *mClosedBodyRedShape,
                    *mClosedGrayShape,
-                   ts, duration, curr, prev, floor, px, candle_w_px);
+                   ts, duration, curr, prev, floor, px, candle_w_px, pd);
     }
     mEmittedClosedCount = n;
 
@@ -513,7 +478,7 @@ void QuoteScratcher::OnLayout(InstrumentPanel& panel)
     AppendBuoy(*mActiveWicksGreenShape, *mActiveWicksRedShape,
                *mActiveBodyGreenShape,  *mActiveBodyRedShape,
                *mActiveGrayShape,
-               active_ts, duration, active, prev, floor, px, candle_w_px);
+               active_ts, duration, active, prev, floor, px, candle_w_px, pd);
 }
 
 }

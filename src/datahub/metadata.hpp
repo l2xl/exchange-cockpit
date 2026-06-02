@@ -17,6 +17,7 @@
 #include "query_builder.hpp"
 #include "currency.hpp"
 #include <glaze/glaze.hpp>
+#include <chrono>
 #include <type_traits>
 #include <algorithm>
 #include <array>
@@ -25,6 +26,11 @@ namespace datahub {
 
 // Glaze-based reflection utilities
 namespace detail {
+
+// Detects any std::chrono::time_point specialisation. Persisted as its millisecond count, so a
+// time-typed entity field (e.g. bybit::PublicTrade::time) round-trips through SQLite as an integer.
+template<class> inline constexpr bool is_time_point_v = false;
+template<class Clock, class Dur> inline constexpr bool is_time_point_v<std::chrono::time_point<Clock, Dur>> = true;
 
 
 template<typename Entity, auto MemberPtr>
@@ -66,6 +72,8 @@ std::string get_sql_type()
         return "INTEGER";
     } else if constexpr (scratcher::is_currency_v<T>) {
         return "TEXT"; // fixed-point persisted as its canonical decimal string
+    } else if constexpr (is_time_point_v<T>) {
+        return "INTEGER"; // time_point persisted as a millisecond count
     } else if constexpr (requires { typename T::value_type; } && std::is_same_v<T, std::optional<typename T::value_type>>) {
         // Handle std::optional types - use the underlying type
         return get_sql_type<typename T::value_type>();

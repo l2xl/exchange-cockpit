@@ -15,10 +15,14 @@
 #define TIMEDEF_HPP
 
 #include <chrono>
+#include <cstdint>
 
 namespace scratcher {
 
-typedef std::chrono::utc_clock::time_point time_point;
+// system_clock (Unix ms, leap-second-free) is THE project time frame: wire trade timestamps,
+// buoy candle times and the render/view edge all live here. utc_clock must never be mixed in —
+// it carries leap seconds (~27 s in 2026), which skews the live edge and the visible-buoy span.
+typedef std::chrono::system_clock::time_point time_point;
 typedef time_point::duration duration;
 
 using std::chrono::milliseconds;
@@ -35,7 +39,6 @@ using std::chrono::sys_days;
 using std::chrono::year_month_day;
 using std::chrono::weekday;
 using std::chrono::Monday;
-using std::chrono::utc_clock;
 using std::chrono::last;
 using std::chrono::floor;
 using std::chrono::duration_cast;

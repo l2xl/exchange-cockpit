@@ -17,10 +17,13 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <functional>
 #include <optional>
 #include <ranges>
 
 #include "buoy_candle.hpp"
+#include "data_update.hpp"
 #include "scratcher.hpp"
 #include "timedef.hpp"
 #include "tvg_ptr.hpp"
@@ -64,7 +67,7 @@ class QuoteScratcher : public Scratcher
 {
 protected:
     BuoyCandleQuotes mQuotes;
-    uint64_t mLastPrice = 0;
+    BuoyCandleQuotes::price_t mLastPrice;
 
     tvg_ptr<tvg::Scene> mScene;
 
@@ -107,9 +110,9 @@ public:
 
     template <std::ranges::forward_range Range>
     requires requires(std::ranges::range_value_t<Range> trade) {
-        trade.trade_time;
-        trade.price_points;
-        trade.volume_points;
+        trade.time;
+        trade.price;
+        trade.size;
     }
     void IngestTrades(const Range& trades);
 
@@ -118,24 +121,50 @@ public:
     void OnLayout(InstrumentPanel& panel) override;
     void OnDetach(InstrumentPanel& panel) override;
 
+    // Data path: ingest a snapshot|increment of trades and rescale the price axis. Called by
+    // the panel under its data mutex — the only entry point that mutates the series. `trades`
+    // is the feed's native bybit::PublicTrade cache subrange (any forward range whose value
+    // exposes time/price/size), passed straight through with no copy. A snapshot rebuilds the
+    // append-only series from scratch; an increment appends the new tail. Trade dedup makes a
+    // re-sent overlap harmless.
+    template <std::ranges::forward_range Range>
+    requires requires(std::ranges::range_value_t<Range> trade) {
+        trade.time;
+        trade.price;
+        trade.size;
+    }
+    void IngestAndScale(InstrumentPanel& panel, datahub::update_kind kind, const Range& trades);
+
 protected:
+    // Data-path price-window autoscale (visible-buoy extent + price refloor). Sets the scene
+    // price floor; the e22 derivation stays on the time path so resize is handled without data.
+    void PriceAutoscale(InstrumentPanel& panel);
+
+    // Time-path defensive refloor of the scene TIME floor on a float32 precision budget,
+    // replacing the per-2-span hysteresis so steady scrolling does not periodically rebuild
+    // the closed-buoy geometry.
+    void TimeFloorRefloor(InstrumentPanel& panel);
+
+    // Wall clock in Unix ms (sys_clock, leap-second-free) driving the candle fill-forward.
+    static uint64_t WallNowMs();
+
     // Clock-injected core of IngestTrades: the public overload reads the wall clock and
     // forwards here; tests inject a deterministic now_ts. now_ts drives BuoyCandleQuotes'
     // fill-forward of empty buoys up to the present moment.
     template <std::ranges::forward_range Range>
     requires requires(std::ranges::range_value_t<Range> trade) {
-        trade.trade_time;
-        trade.price_points;
-        trade.volume_points;
+        trade.time;
+        trade.price;
+        trade.size;
     }
     void IngestTradesAt(const Range& trades, uint64_t now_ts);
 };
 
 template <std::ranges::forward_range Range>
 requires requires(std::ranges::range_value_t<Range> trade) {
-    trade.trade_time;
-    trade.price_points;
-    trade.volume_points;
+    trade.time;
+    trade.price;
+    trade.size;
 }
 void QuoteScratcher::IngestTrades(const Range& trades)
 {
@@ -151,9 +180,9 @@ void QuoteScratcher::IngestTrades(const Range& trades)
 
 template <std::ranges::forward_range Range>
 requires requires(std::ranges::range_value_t<Range> trade) {
-    trade.trade_time;
-    trade.price_points;
-    trade.volume_points;
+    trade.time;
+    trade.price;
+    trade.size;
 }
 void QuoteScratcher::IngestTradesAt(const Range& trades, uint64_t now_ts)
 {
@@ -162,8 +191,10 @@ void QuoteScratcher::IngestTradesAt(const Range& trades, uint64_t now_ts)
 
     if (mQuotes.last_trade_timestamp()) {
         const uint64_t last_seen = *mQuotes.last_trade_timestamp();
-        begin = std::upper_bound(begin, end, last_seen,
-            [](uint64_t v, const auto& t) { return v < get_timestamp(t.trade_time); });
+        // ranges::upper_bound (not std::upper_bound): a transform view's iterator yields a
+        // prvalue, so it is not a LegacyForwardIterator and the classic algorithm is ill-formed.
+        begin = std::ranges::upper_bound(begin, end, last_seen, std::less<>{},
+            [](const auto& t) { return get_timestamp(t.time); });
     }
 
     // Seed last_price for the AppendTrades fill-forward path. Three cases:
@@ -175,16 +206,44 @@ void QuoteScratcher::IngestTradesAt(const Range& trades, uint64_t now_ts)
     // fill-forward loop in AppendTrades runs UNCONDITIONALLY whenever a series
     // exists, so calling it with an empty subrange is what keeps empty-buoy gray
     // dashes materialising in real time between actual trade arrivals.
-    uint64_t last_price;
+    BuoyCandleQuotes::price_t last_price;
     if (mQuotes.last_trade_timestamp()) {
         last_price = mLastPrice;
     } else if (begin != end) {
-        last_price = begin->price_points;
+        last_price = (*begin).price;
     } else {
         return;
     }
 
-    mLastPrice = mQuotes.AppendTrades(std::ranges::subrange(begin, end), now_ts, last_price);
+    // AppendTrades ingests the (deduped) trade slice; AdvanceTo then fill-forwards empty
+    // buoys and rolls the active candle up to now_ts. Splitting them lets the time/scroll
+    // path call AdvanceTo alone — see QuoteScratcher::CalculateSize — while trade arrival
+    // drives both. Calling AppendTrades with an empty slice is a no-op that still returns
+    // last_price, so AdvanceTo's fill-forward keeps running during no-trade gaps.
+    mLastPrice = mQuotes.AppendTrades(std::ranges::subrange(begin, end), last_price);
+    mQuotes.AdvanceTo(now_ts, mLastPrice);
+}
+
+template <std::ranges::forward_range Range>
+requires requires(std::ranges::range_value_t<Range> trade) {
+    trade.time;
+    trade.price;
+    trade.size;
+}
+void QuoteScratcher::IngestAndScale(InstrumentPanel& panel, datahub::update_kind kind, const Range& trades)
+{
+    // A snapshot rebuilds the append-only series from scratch (Reset clears the trade
+    // bookmarks so nothing is deduped away); an increment appends the new tail.
+    if (kind == datahub::update_kind::snapshot)
+        mQuotes.Reset();
+
+    try {
+        IngestTrades(trades);
+    }
+    catch (const std::exception&)
+    { /* one malformed batch must not stall the series */ }
+
+    PriceAutoscale(panel);
 }
 
 }

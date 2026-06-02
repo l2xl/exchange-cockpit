@@ -52,21 +52,24 @@ struct IDataController
     virtual const std::string& Name() const = 0;
 
     virtual void SubscribeInstrumentList(std::weak_ptr<instruments_feed_type::subscription_type> sub) = 0;
-    virtual void SubscribeInstrument(std::string symbol,
-                                     std::weak_ptr<orderbook_feed_type::subscription_type> ob_sub,
-                                     std::weak_ptr<public_trades_feed_type::subscription_type> pt_sub) = 0;
+
+    // Subscribe a caller-owned public-trade subscription to a symbol. The controller materialises
+    // the per-symbol feeds + WS streams on the first call (and an order-book subscription whose
+    // consumption is still TBD), then wires `trade_sub` to the public-trade feed — which keeps
+    // only a weak_ptr, so the subscriber owns the shared_ptr and dropping it unsubscribes (RAII,
+    // exactly like SubscribeInstrumentList). The feed delivers an immediate snapshot if its cache
+    // is already populated. Trades arrive as the feed's native bybit::PublicTrade cache subrange.
+    virtual void SubscribeInstrument(std::string symbol, std::weak_ptr<public_trades_feed_type::subscription_type> trade_sub) = 0;
     virtual void SubscribeOrders(std::weak_ptr<private_orders_feed_type::subscription_type> sub) = 0;
     virtual void SubscribeTrades(std::weak_ptr<private_trades_feed_type::subscription_type> sub) = 0;
 
     virtual const instruments_feed_type& getInstrumentsFeed() const = 0;
 
-    // Per-symbol public-trade feed shared across all consumers. The feed is
-    // materialised by SubscribeInstrument(symbol, ...) — callers that only need
-    // read access (e.g. the cockpit handing the feed to a panel) still call
-    // SubscribeInstrument with empty weak_ptr subs to trigger creation, then read
-    // the live feed via this accessor. Returns nullptr for symbols that have not
-    // yet been subscribed. The returned shared_ptr keeps the feed alive at least
-    // as long as the caller retains it; the data manager retains its own copy.
+    // Per-symbol public-trade feed shared across all consumers, materialised by
+    // SubscribeInstrument(symbol, ...). Returns nullptr for symbols that have not yet been
+    // subscribed. The returned shared_ptr keeps the feed alive at least as long as the caller
+    // retains it; the data manager retains its own copy. Most consumers receive trades via the
+    // subscription sink instead and never need this accessor.
     virtual std::shared_ptr<const public_trades_feed_type> getPublicTradesFeed(const std::string& symbol) const = 0;
 
     virtual void PlaceOrder(bybit::OrderRequest request, std::function<void(std::string orderId)> callback) = 0;

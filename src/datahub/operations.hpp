@@ -3,9 +3,11 @@
 
 #include "data_model.hpp"
 #include "query_builder.hpp"
+#include "metadata.hpp"
 #include "currency.hpp"
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <array>
+#include <chrono>
 #include <memory>
 #include <utility>
 #include <deque>
@@ -104,9 +106,11 @@ private:
             m_statement.bind(Index, static_cast<int64_t>(value));
         } else if constexpr (scratcher::is_currency_v<DecayedT>) {
             m_statement.bind(Index, value.to_string());
+        } else if constexpr (detail::is_time_point_v<DecayedT>) {
+            m_statement.bind(Index, static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(value.time_since_epoch()).count()));
         } else if constexpr (std::is_same_v<DecayedT, std::monostate>) {
             m_statement.bind(Index); // Bind NULL
-        } else if constexpr (std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
+        } else if constexpr (requires { typename DecayedT::value_type; } && std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
             // Handle std::optional types
             if (value.has_value()) {
                 bind_single_parameter<Index>(value.value());
@@ -145,9 +149,11 @@ private:
             m_statement.bind(index, static_cast<int64_t>(value));
         } else if constexpr (scratcher::is_currency_v<DecayedT>) {
             m_statement.bind(index, value.to_string());
+        } else if constexpr (detail::is_time_point_v<DecayedT>) {
+            m_statement.bind(index, static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(value.time_since_epoch()).count()));
         } else if constexpr (std::is_same_v<DecayedT, std::monostate>) {
             m_statement.bind(index); // Bind NULL
-        } else if constexpr (std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
+        } else if constexpr (requires { typename DecayedT::value_type; } && std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
             // Handle std::optional types
             if (value.has_value()) {
                 bind_single_parameter_dynamic(index, value.value());
@@ -265,6 +271,8 @@ private:
                 } else if constexpr (scratcher::is_currency_v<FieldType>) {
                     auto s = col.getString();
                     glz::get<Idx>(tie) = s.empty() ? FieldType{} : FieldType(s);
+                } else if constexpr (detail::is_time_point_v<FieldType>) {
+                    glz::get<Idx>(tie) = FieldType{std::chrono::milliseconds{col.getInt64()}};
                 } else if constexpr (requires { typename FieldType::value_type; } && std::is_same_v<FieldType, std::optional<typename FieldType::value_type>>) {
                     using InnerType = typename FieldType::value_type;
                     if constexpr (std::is_same_v<InnerType, std::string>) {

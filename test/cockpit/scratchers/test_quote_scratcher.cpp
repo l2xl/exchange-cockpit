@@ -21,6 +21,8 @@
 #include <catch2/generators/catch_generators_range.hpp>
 
 #include "scratchers/quote_scratcher.hpp"
+#include "bybit/entities/public_trade.hpp"
+#include "currency.hpp"
 #include "timedef.hpp"
 
 using namespace scratcher;
@@ -62,25 +64,26 @@ struct Scenario {
     std::vector<Buoy>  buoys;     // expected series: closed buoys then the active candle
 };
 
-// The wire-format record QuoteScratcher's ingestion concept consumes.
-struct EngineTrade {
-    time_point trade_time;
-    uint64_t   price_points;
-    uint64_t   volume_points;
-};
-
 // Exposes the protected clock-injection seam so the suite is deterministic.
 struct TestQuoteScratcher : QuoteScratcher {
     using QuoteScratcher::QuoteScratcher;
     using QuoteScratcher::IngestTradesAt;
 };
 
-std::vector<EngineTrade> ToEngineTrades(const std::vector<Trade>& trades)
+// QuoteScratcher's ingestion concept consumes the native wire trade: time as a time_point,
+// price/size as currency. Integer test prices/volumes become decimals-0 currency, so the
+// candle's currency arithmetic reproduces the human-reviewed integer expectations exactly.
+std::vector<bybit::PublicTrade> ToTrades(const std::vector<Trade>& trades)
 {
-    std::vector<EngineTrade> out;
+    std::vector<bybit::PublicTrade> out;
     out.reserve(trades.size());
-    for (const Trade& t : trades)
-        out.push_back({time_point{} + milliseconds(static_cast<int64_t>(t.ts)), t.price, t.volume});
+    for (const Trade& t : trades) {
+        bybit::PublicTrade pt;
+        pt.time  = time_point{} + milliseconds(static_cast<int64_t>(t.ts));
+        pt.price = currency<uint64_t>(t.price, 0);
+        pt.size  = currency<uint64_t>(t.volume, 0);
+        out.push_back(std::move(pt));
+    }
     return out;
 }
 
@@ -135,9 +138,9 @@ std::vector<Buoy> CollectBuoys(const TestQuoteScratcher& scr)
 {
     std::vector<Buoy> out;
     for (const auto& c : scr.GetQuotes())
-        out.push_back({c.min, c.max, c.mean, c.close, c.volume});
+        out.push_back({c.min.raw(), c.max.raw(), c.mean.raw(), c.close.raw(), c.volume.raw()});
     const auto active = scr.GetActiveCandle();
-    out.push_back({active.min, active.max, active.mean, active.close, active.volume});
+    out.push_back({active.min.raw(), active.max.raw(), active.mean.raw(), active.close.raw(), active.volume.raw()});
     return out;
 }
 
@@ -151,7 +154,7 @@ TEST_CASE("QuoteScratcher buoy series", "[quote_scratcher][buoy]")
     TestQuoteScratcher scr{milliseconds(static_cast<int64_t>(sc.duration))};
     CHECK(scr.BuoyDuration() == sc.duration);
 
-    scr.IngestTradesAt(ToEngineTrades(sc.trades), sc.now_ts);
+    scr.IngestTradesAt(ToTrades(sc.trades), sc.now_ts);
 
     // The first buoy timestamp is the first trade's slot floored to the buoy duration.
     REQUIRE(scr.FirstBuoyTimestamp().has_value());
@@ -177,7 +180,7 @@ TEST_CASE("QuoteScratcher ignores already-seen trades", "[quote_scratcher][dedup
     const std::vector<Trade> batch{ {2, 5, 2}, {4, 5, 2} };  // one slot, flat at price 5
 
     TestQuoteScratcher scr{milliseconds(10)};
-    scr.IngestTradesAt(ToEngineTrades(batch), 4);
+    scr.IngestTradesAt(ToTrades(batch), 4);
     const std::vector<Buoy> after_first = CollectBuoys(scr);
 
     REQUIRE(after_first.size() == 1);
@@ -187,7 +190,7 @@ TEST_CASE("QuoteScratcher ignores already-seen trades", "[quote_scratcher][dedup
     CHECK(after_first[0].close  == 5);
     CHECK(after_first[0].volume == 4);
 
-    scr.IngestTradesAt(ToEngineTrades(batch), 4);  // identical batch again
+    scr.IngestTradesAt(ToTrades(batch), 4);  // identical batch again
     const std::vector<Buoy> after_replay = CollectBuoys(scr);
 
     REQUIRE(after_replay.size() == after_first.size());

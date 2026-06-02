@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -99,22 +100,18 @@ public:
     void AddScratcher(std::shared_ptr<Scratcher> scratcher);
     std::shared_ptr<QuoteScratcher> QuoteScratcherInstance() const { return mQuoteScratcher; }
 
-    // Bind the panel to its instrument and live trades feed in one shot. Called once
-    // by the cockpit at registration time; the instrument never mutates within a
-    // panel's lifetime — symbol re-selection is a panel-replace in MainWindow, not
-    // an in-place rebind. mPriceDecimals / mSizeDecimals are derived here from
-    // InstrumentInfo so the per-tick string→points adapter does not re-parse
-    // tickSize on every read. The feed itself is owned by the data manager;
-    // scratchers read its snapshot during OnLayout via the standard Update() circuit.
-    void SetInstrumentFeed(bybit::InstrumentInfo info, std::shared_ptr<const IDataController::public_trades_feed_type> feed);
-    const std::shared_ptr<const IDataController::public_trades_feed_type>& PublicTradesFeed() const
-    { return mPublicTradesFeed; }
+    void SetInstrument(bybit::InstrumentInfo info);
 
     std::size_t PriceDecimals() const
     { return mPriceDecimals; }
 
     std::size_t SizeDecimals() const
     { return mSizeDecimals; }
+
+    void OnPublicTrades(datahub::update_kind kind, IDataController::public_trades_feed_type::const_iterator first, IDataController::public_trades_feed_type::const_iterator last);
+
+    void SetTradeSubscription(std::shared_ptr<IDataController::public_trades_feed_type::subscription_type> sub)
+    { mTradeSubscription = std::move(sub); }
 
     // Damage tracking. Scratchers call this BEFORE mutating a paint; the panel captures
     // the paint's pre-mutation bounds (valid from the previous frame's sync) and adds
@@ -212,13 +209,14 @@ private:
     int  mRightPadPx = -1;                       // captured on first OnSize as 5% of inner width
     std::optional<int64_t> mPinnedViewLeftMs;    // set: pinned (tests / scrolling); unset: live wall clock
 
-    std::shared_ptr<const IDataController::public_trades_feed_type> mPublicTradesFeed;
     std::size_t mPriceDecimals = 0;
     std::size_t mSizeDecimals = 0;
 
     std::deque<std::shared_ptr<Scratcher>> mScratchers;
     std::shared_ptr<QuoteScratcher> mQuoteScratcher;
     mutable std::shared_mutex mScratcherMutex;
+
+    std::shared_ptr<IDataController::public_trades_feed_type::subscription_type> mTradeSubscription;
 
     // Serialises Circuit A (UI paint hook) and Circuit B (worker Update) against each
     // other and against Render()'s viewport+canvas->update() phase. Distinct from

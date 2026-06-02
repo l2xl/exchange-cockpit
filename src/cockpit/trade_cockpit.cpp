@@ -135,15 +135,21 @@ panel_id TradeCockpit::RegisterInstrumentPanel(const std::string& symbol, std::s
         if (it != cache.end()) info = *it;
     }
 
-    // Trigger feed creation + WS subscription via the data-controller's existing
-    // SubscribeInstrument entry point. Empty weak_ptr subs are tolerated by every
-    // feed in the pipeline (sorted_data_feed::subscribe only stores the weak ref
-    // and prunes dead ones on the next push), and we don't need a per-panel
-    // subscription callback at all — the panel reads the live snapshot from the
-    // feed on its regular Update() tick.
-    mDataManager->SubscribeInstrument(symbol, {}, {});
+    // Bind the panel's instrument (derives the fixed-point decimals used at render time), then
+    // build the public-trade subscription the panel OWNS and hand a weak_ptr to the data manager.
+    // The subscription's callable pins the panel via its weak_ptr and forwards the feed's native
+    // PublicTrade cache subrange straight to OnPublicTrades (snapshot or increment) — no copy, no
+    // adapter record. The panel owning the subscription means dropping the panel unsubscribes by
+    // RAII. This is the sole trade-ingestion path; the heartbeat tick only advances the clock.
+    panel->SetInstrument(std::move(info));
 
-    panel->SetInstrumentFeed(std::move(info), mDataManager->getPublicTradesFeed(symbol));
+    using pubtrade_feed = IDataController::public_trades_feed_type;
+    auto trade_sub = datahub::make_subscription<pubtrade_feed::cache_type>(
+        [weak_panel = std::weak_ptr(panel)](datahub::update_kind kind, const pubtrade_feed::cache_type& /*full*/, pubtrade_feed::const_iterator first, pubtrade_feed::const_iterator last) {
+            if (auto p = weak_panel.lock()) p->OnPublicTrades(kind, first, last);
+        });
+    panel->SetTradeSubscription(trade_sub);
+    mDataManager->SubscribeInstrument(symbol, trade_sub);
 
     return RegisterPanel(std::move(panel));
 }

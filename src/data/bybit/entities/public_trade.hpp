@@ -18,6 +18,7 @@
 #include <optional>
 #include "enums.hpp"
 #include "currency.hpp"
+#include "timedef.hpp"
 #include <glaze/glaze.hpp>
 #include <glaze/core/common.hpp>
 #include <glaze/core/wrappers.hpp>
@@ -36,7 +37,7 @@ struct PublicTrade {
     currency<uint64_t> price;           // Execution price
     currency<uint64_t> size;            // Execution size
     OrderSide side;                     // Trade side (Buy/Sell)
-    std::string time;                   // Execution timestamp (ms) - JSON sends as string
+    time_point time;                    // Execution timestamp; parsed from the wire ms (REST string / WS number)
     bool isBlockTrade{false};         // Whether it's a block trade
     bool isRPITrade{false};           // Whether it's RPI trade
     std::string seq;                    // Sequence number
@@ -54,6 +55,21 @@ struct WsPublicTrade : PublicTrade {
 
 } // namespace scratcher::bybit
 
+// Glaze codec for the project time_point (system_clock): REST trade feeds carry the execution
+// timestamp as a quoted millisecond count ("1700000000000"); read it into a time_point and write
+// it back the same way. The WS form (a bare number) is handled per-field in WsPublicTrade's meta.
+template <>
+struct glz::meta<scratcher::time_point> {
+    static constexpr auto value = glz::custom<
+        [](scratcher::time_point& tp, const std::string& s) {
+            tp = s.empty() ? scratcher::time_point{} : scratcher::time_point{scratcher::milliseconds{std::stoll(s)}};
+        },
+        [](const scratcher::time_point& tp) -> std::string {
+            return std::to_string(scratcher::get_timestamp(tp));
+        }
+    >;
+};
+
 // Glaze metadata for WsPublicTrade - maps WebSocket field names to PublicTrade members
 // WebSocket uses abbreviated field names: i, T, p, v, S, s, BT, RPI, seq
 // These are mapped to: execId, time, price, size, side, symbol, isBlockTrade, isRPITrade, seq
@@ -65,7 +81,10 @@ struct glz::meta<scratcher::bybit::WsPublicTrade> {
 
     static constexpr auto value = glz::object(
         "i", &T::execId,           // Trade ID -> execId
-        "T", glz::number<&scratcher::bybit::WsPublicTrade::time>,  // Timestamp as number -> time as string
+        "T", glz::custom<          // WS sends the timestamp as a bare ms number -> time_point
+            [](scratcher::bybit::WsPublicTrade& self, int64_t ms) { self.time = scratcher::time_point{scratcher::milliseconds{ms}}; },
+            [](const scratcher::bybit::WsPublicTrade& self) { return static_cast<int64_t>(scratcher::get_timestamp(self.time)); }
+        >,
         "p", &T::price,            // Price -> price
         "v", &T::size,             // Volume -> size
         "S", &T::side,             // Side -> side

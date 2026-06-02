@@ -20,6 +20,7 @@
 #include <fstream>
 #include <limits>
 #include <mutex>
+#include <ranges>
 
 #include "scratchers/price_ruler.hpp"
 #include "scratchers/time_ruler.hpp"
@@ -143,15 +144,16 @@ InstrumentPanel::InstrumentPanel(PanelType type, seconds candle_period, uint32_t
     using namespace std::chrono;
     const auto period = duration_cast<milliseconds>(mCandlePeriod);
 
-    // Snap the precision floor to one calendar year before today (UTC). A fixed
-    // 365-day step drifts ~5h45m/year on average vs. the Gregorian calendar, so
-    // we walk the calendar with year_month_day; a Feb 29 source folds to Feb 28
-    // of the prior year via the year_month_day_last fallback.
-    const auto today = floor<days>(utc_clock::to_sys(utc_clock::now()));
+    // Snap the precision floor to one calendar year before today. Kept in the system_clock
+    // (Unix ms, leap-second-free) frame so it shares the wire-trade / buoy / view time frame —
+    // utc_clock would offset it ~27 s. A fixed 365-day step drifts ~5h45m/year on average vs.
+    // the Gregorian calendar, so we walk the calendar with year_month_day; a Feb 29 source folds
+    // to Feb 28 of the prior year via the year_month_day_last fallback.
+    const auto today = floor<days>(system_clock::now());
     auto floor_ymd = year_month_day{today} - years{1};
     if (!floor_ymd.ok())
         floor_ymd = floor_ymd.year() / floor_ymd.month() / last;
-    const auto floor_unaligned = duration_cast<milliseconds>(utc_clock::from_sys(sys_days{floor_ymd}).time_since_epoch());
+    const auto floor_unaligned = duration_cast<milliseconds>(sys_days{floor_ymd}.time_since_epoch());
     const auto floor_aligned = period.count() > 0 ? floor_unaligned - (floor_unaligned % period) : floor_unaligned;
 
     mSceneFloor.time_ms = static_cast<uint64_t>(floor_aligned.count());
@@ -260,7 +262,10 @@ int64_t InstrumentPanel::ViewLeftTimeMs() const
         return static_cast<int64_t>(mSceneFloor.time_ms);
 
     const double ms_per_px     = static_cast<double>(period.count()) / static_cast<double>(mCandleWidthPixels);
-    const auto   now_ms        = duration_cast<milliseconds>(utc_clock::now().time_since_epoch());
+    // system_clock (Unix ms, leap-second-free) so the live view edge shares the wire-trade /
+    // buoy time frame. utc_clock::now() would sit ~27 s ahead, parking the newest buoy that far
+    // left of the right edge and skewing the visible-buoy span PriceAutoscale scans.
+    const auto   now_ms        = duration_cast<milliseconds>(std::chrono::system_clock::now().time_since_epoch());
     const int    right_pad     = std::max(0, mRightPadPx);
     const int    now_anchor_px = std::max(0, mInnerDataRect.width() - right_pad);
     const auto   time_at_left  = now_ms - milliseconds{static_cast<int64_t>(static_cast<double>(now_anchor_px) * ms_per_px)};
@@ -477,8 +482,7 @@ const std::string& InstrumentPanel::DefaultFontName() const
     return kDefaultFontName;
 }
 
-void InstrumentPanel::SetInstrumentFeed(bybit::InstrumentInfo info,
-                                        std::shared_ptr<const IDataController::public_trades_feed_type> feed)
+void InstrumentPanel::SetInstrument(bybit::InstrumentInfo info)
 {
     mInstrument = std::move(info);
     // tickSize / basePrecision arrive already parsed as currency, so the fractional
@@ -489,7 +493,21 @@ void InstrumentPanel::SetInstrumentFeed(bybit::InstrumentInfo info,
     // currency rescale doesn't truncate sub-cent fractional sizes.
     const std::size_t base_decimals = mInstrument.basePrecision.decimals();
     mSizeDecimals = base_decimals > 0 ? base_decimals : 8;
-    mPublicTradesFeed = std::move(feed);
+}
+
+void InstrumentPanel::OnPublicTrades(datahub::update_kind kind,
+                                    IDataController::public_trades_feed_type::const_iterator first,
+                                    IDataController::public_trades_feed_type::const_iterator last)
+{
+    // Data path entry point (data/worker thread): take the data mutex — the same lock DoUpdate
+    // and Render hold — so the series mutation is serialised against the UI-thread readers, then
+    // hand the feed's native PublicTrade subrange [first,last) straight to the quote scratcher
+    // for ingestion + price autoscale (no copy; the scratcher reads price/size as currency and
+    // only converts to scene points at the ThorVG boundary). Geometry re-emission and the UI
+    // redraw ride the next 25 ms heartbeat, so nothing is posted here.
+    std::lock_guard lock(mDataMutex);
+    if (mQuoteScratcher)
+        mQuoteScratcher->IngestAndScale(*this, kind, std::ranges::subrange(first, last));
 }
 
 } // namespace scratcher::cockpit

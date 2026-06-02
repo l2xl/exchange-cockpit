@@ -181,3 +181,42 @@ TEST_CASE_METHOD(CwdFixture, "TimeRuler image series — zoomed across seconds-t
                             std::chrono::seconds{7 * 86400}, 1, kCanvasW, kCanvasH, kFloor_2020_01_01_00_00);
     }
 }
+
+// QuoteScratcher::CalculateSize refloors the scene TIME floor on a float32 precision budget
+// (~ e11·(view_right−floor)·2⁻²⁴ px), not on a fixed scroll-distance hysteresis. A floor inside
+// budget must survive a steady tick untouched (so scrolling never rebuilds geometry); a stale
+// floor that breaks the budget must snap back near the view. Driven through a real panel since
+// the budget reads the live LogicalScene e11 and inner-rect span.
+TEST_CASE_METHOD(CwdFixture, "QuoteScratcher time-floor precision refloor", "[quote_scratcher][refloor][render]")
+{
+    using namespace std::chrono_literals;
+    using scratcher::cockpit::SceneFloor;
+
+    constexpr int w = 800;
+    constexpr int h = 400;
+    const int64_t view_left = static_cast<int64_t>(kFloor_2026_05_03_12_00);
+
+    SECTION("a floor well inside the float32 budget is left untouched") {
+        // 1s candles at 8 px: the 0.5 px budget is ~12 days of scroll, so a floor a minute
+        // behind the view is far inside it and a tick must not move it.
+        TestPanel panel(1s, 8);
+        panel.SetViewLeftTimeMs(view_left);
+        const uint64_t close_floor = static_cast<uint64_t>(view_left) - 60'000;  // 60 s behind
+        panel.SetSceneFloor(SceneFloor{close_floor, 0});
+        panel.AllocatePixelBuffer(w, h);   // runs DoUpdate → CalculateSize → TimeFloorRefloor
+        CHECK(panel.GetSceneFloor().time_ms == close_floor);
+    }
+
+    SECTION("a stale far floor that breaks the budget is snapped back near the view") {
+        // Same 1s/8px view but a floor ~6 years behind blows the budget; the defensive refloor
+        // snaps it to one inner-span behind view_left (span < canvas_w·1000/8 = 100 s here).
+        TestPanel panel(1s, 8);
+        panel.SetViewLeftTimeMs(view_left);
+        panel.SetSceneFloor(SceneFloor{static_cast<uint64_t>(kFloor_2020_01_01_00_00), 0});
+        panel.AllocatePixelBuffer(w, h);
+        const uint64_t floor_ms = panel.GetSceneFloor().time_ms;
+        CHECK(floor_ms != kFloor_2020_01_01_00_00);                    // moved
+        CHECK(floor_ms <= static_cast<uint64_t>(view_left));           // at/behind the left edge
+        CHECK(static_cast<uint64_t>(view_left) - floor_ms <= 100'000); // within one inner-span
+    }
+}

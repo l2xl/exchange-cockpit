@@ -107,47 +107,59 @@ public:
 
                 size_t inserted = 0;
                 update_kind update = update_kind::increment;
-                auto first_update_it = self->m_cache.end();
+                // Track the appended tail by INDEX, not iterator: a deque insert invalidates every
+                // iterator (and reallocates the node map as it grows), so a saved iterator dangles.
+                size_t first_update_idx = 0;
                 if (self->m_cache.empty()) {
                     self->m_cache = std::ranges::to<cache_type>(incoming);
                     update = update_kind::snapshot;
                     inserted = self->m_cache.size();
                 }
                 else {
-                    auto cache_it = self->m_cache.begin();
+                    // The cache is kept sorted and incoming records are almost always at/after its
+                    // tail, so test the tail first (O(1)) instead of scanning from the front. Only a
+                    // genuinely out-of-order record pays for a bounded reverse scan from the end.
                     auto in_end = std::ranges::end(incoming);
                     for (auto in_it = std::ranges::begin(incoming); in_it != in_end; ++in_it) {
+                        const auto& tail = self->m_cache.back();
 
-                        while (cache_it != self->m_cache.end() && sort_val(*cache_it) < sort_val(*in_it))
-                            ++cache_it;
-
-                        if (cache_it == self->m_cache.end()) {
-                            auto it = self->m_cache.insert(cache_it, in_it, in_end);
-                            if (first_update_it == self->m_cache.end())
-                                first_update_it = it;
+                        // Tail append: the record sorts at or after the last cached one. A same-sort
+                        // arrival appends stably after its group (still an increment, not a reorder);
+                        // an exact (sort + key) re-send of the tail is dropped.
+                        if (!(sort_val(*in_it) < sort_val(tail))) {
+                            if (sort_val(*in_it) == sort_val(tail) && key_val(*in_it) == key_val(tail))
+                                continue;
+                            if (inserted == 0) first_update_idx = self->m_cache.size();
+                            self->m_cache.push_back(std::move(*in_it));
                             ++inserted;
-                            break;
+                            continue;
                         }
 
-                        if (sort_val(*in_it) < sort_val(*cache_it)) {
-                            cache_it = self->m_cache.emplace(cache_it, std::move(*in_it));
-                            update = update_kind::snapshot;
-                            ++inserted;
-                        } else if (sort_val(*in_it) == sort_val(*cache_it)) {
-                            if (key_val(*in_it) != key_val(*cache_it)) {
-                                cache_it = self->m_cache.emplace(cache_it, std::move(*in_it));
-                                update = update_kind::snapshot;
-                                ++inserted;
+                        // Out of order: reverse-scan from the end for the insertion point, dropping an
+                        // exact duplicate met on the way. A real mid-cache insert re-orders data the
+                        // subscribers already saw, so they must resync via a full snapshot.
+                        auto pos = self->m_cache.end();
+                        bool duplicate = false;
+                        while (pos != self->m_cache.begin()) {
+                            auto prev = std::prev(pos);
+                            if (sort_val(*prev) < sort_val(*in_it)) break;
+                            if (sort_val(*prev) == sort_val(*in_it) && key_val(*prev) == key_val(*in_it)) {
+                                duplicate = true;
+                                break;
                             }
+                            pos = prev;
                         }
-                        ++cache_it;
+                        if (duplicate) continue;
+                        self->m_cache.insert(pos, std::move(*in_it));
+                        update = update_kind::snapshot;
+                        ++inserted;
                     }
                 }
                 if (inserted > 0) {
                     if (update == update_kind::snapshot)
                         self->push_snapshot();
                     else
-                        self->push_increment(first_update_it, self->m_cache.cend());
+                        self->push_increment(std::ranges::next(self->m_cache.cbegin(), static_cast<std::ptrdiff_t>(first_update_idx)), self->m_cache.cend());
                 }
             }
         };

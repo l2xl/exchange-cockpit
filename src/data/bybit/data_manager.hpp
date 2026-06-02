@@ -35,6 +35,8 @@
 #include "datahub/data_feed.hpp"
 #include "cli11/CLI11.hpp"
 
+#include <vector>
+
 namespace scratcher {
 namespace bybit {
 
@@ -75,7 +77,20 @@ private:
     std::shared_ptr<instrument_sink_type>        m_instrument_sink;
 
     std::shared_ptr<connect::websock_connection> m_public_stream;
-    boost::container::flat_map<std::string, std::tuple<orderbook_sink_ptr, orderbook_feed_ptr, pubtrade_sink_ptr, pubtrade_feed_ptr>> m_pubdata_accept;
+
+    // Per-symbol public stream state: the orderbook + public-trade sinks/feeds the manager owns.
+    // Public-trade consumers are owned by their subscribers (the panel), not here — the feed keeps
+    // only weak_ptrs, so a subscriber dropping its shared_ptr unsubscribes by itself. The order-book
+    // consumer is a manager-owned datahub::make_subscription (TBD handler), wired like the trade one.
+    struct symbol_streams
+    {
+        orderbook_sink_ptr ob_sink;
+        orderbook_feed_ptr ob_feed;
+        pubtrade_sink_ptr  pt_sink;
+        pubtrade_feed_ptr  pt_feed;
+        std::shared_ptr<orderbook_feed_type::subscription_type> ob_consumer;  // TBD-handler order-book consumer (one per symbol)
+    };
+    boost::container::flat_map<std::string, symbol_streams> m_pubdata_accept;
 
     std::shared_ptr<private_order_sink_type>     m_private_order_sink;
     std::shared_ptr<private_trade_sink_type>     m_private_trade_sink;
@@ -97,9 +112,7 @@ public:
     static void HandleError(std::weak_ptr<ByBitDataManager> ref, std::exception_ptr eptr);
 
     void SubscribeInstrumentList(std::weak_ptr<IDataController::instruments_feed_type::subscription_type> sub) override;
-    void SubscribeInstrument(std::string symbol,
-                             std::weak_ptr<IDataController::orderbook_feed_type::subscription_type> ob_sub,
-                             std::weak_ptr<IDataController::public_trades_feed_type::subscription_type> pt_sub) override;
+    void SubscribeInstrument(std::string symbol, std::weak_ptr<public_trades_feed_type::subscription_type> trade_sub) override;
     void SubscribeOrders(std::weak_ptr<IDataController::private_orders_feed_type::subscription_type> sub) override;
     void SubscribeTrades(std::weak_ptr<IDataController::private_trades_feed_type::subscription_type> sub) override;
 
@@ -110,7 +123,7 @@ public:
     {
         auto it = m_pubdata_accept.find(symbol);
         if (it == m_pubdata_accept.end()) return nullptr;
-        return std::get<pubtrade_feed_ptr>(it->second);
+        return it->second.pt_feed;
     }
 
     void PlaceOrder(OrderRequest request, std::function<void(std::string orderId)> callback) override;
