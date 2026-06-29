@@ -3,7 +3,7 @@
 ## Two-tier code organisation
 
 The project uses a deliberate two-tier convention. The lower tier is **library-layer code** (e.g. `src/datahub/`, `src/connect/`) — generic, reusable building blocks written in the idiom of the C++ Standard Library and Boost.
-The upper tier is **application-layer code** (e.g. `src/cockpit/`, `src/app/elements/`) — concrete OOP classes that orchestrate the library blocks. Study the existing files in the same component and follow the established style.
+The upper tier is **application-layer code** (e.g. `src/cockpit/`, `src/app/`) — concrete OOP classes that orchestrate the library blocks. Study the existing files in the same component and follow the established style.
 
 ## Pointers & ownership
 

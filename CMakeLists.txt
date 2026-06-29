@@ -1,15 +1,6 @@
-# Scratcher project
-# Copyright (c) 2025 l2xl (l2xl/at/proton.me)
-# Distributed under the Intellectual Property Reserve License (IPRL)
-# -----BEGIN PGP PUBLIC KEY BLOCK-----
-#
-# mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
-# lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
-# OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
-# AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
-# 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
-# =KKu7
-# -----END PGP PUBLIC KEY BLOCK-----
+# XCockpit
+# Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+# Distributed under the Intellectual Property Reserve License, v2 (IPRL)
 
 cmake_minimum_required(VERSION 3.21)
 
@@ -23,21 +14,8 @@ include(cmake/CPM.cmake)
 
 set(CMAKE_VERBOSE_MAKEFILE on)
 
-#set(CMAKE_AUTOUIC ON)
-#set(CMAKE_AUTOMOC ON)
-#set(CMAKE_AUTORCC ON)
-
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-#CPMAddPackage(
-#        NAME "Qt"
-#        VERSION "6.9.0"
-#        GIT_TAG "v6.9.0"
-#        GITHUB_REPOSITORY "qt/qt5")
-#CPMAddPackage("gh:qt/qt5@6.9.0")
-
-#find_package(Qt6 6 CONFIG REQUIRED COMPONENTS Core Widgets Svg)
 
 find_package(OpenSSL REQUIRED)
 
@@ -130,10 +108,8 @@ set(core_SOURCES
         src/data/entities/instrument.hpp
         src/data/entities/trade.hpp
         src/data/entities/orderbook_level.hpp
-        src/data/entities/iso_time.hpp
         src/data/bybit/data_manager.cpp
         src/data/bybit/data_manager.hpp
-        src/data/bybit/error.hpp
         src/data/orderbook.hpp
         src/data/bybit/entities/orderbookdata.hpp
         src/data/bybit/entities/wallet.hpp
@@ -173,69 +149,45 @@ set(core_SOURCES
 
 add_library(core STATIC ${core_SOURCES})
 
-#set(PROJECT_SOURCES
-#        src/main.cpp
-#        src/config.hpp
-#        src/config.cpp
-#        src/widget/scratch_widget.cpp
-#        src/widget/scratch_widget.h
-#        src/widget/content_frame.h
-#        src/widget/content_frame.cpp
-#        src/widget/instrument_dropbox.h
-#        src/widget/instrument_dropbox.cpp
-#        src/widget/scratcher.hpp
-#        src/widget/quote_scratcher.cpp
-#        src/widget/quote_scratcher.hpp
-#        src/app/trade_cockpit.cpp
-#        src/app/trade_cockpit.h
-#        src/app/trade_cockpit.ui
-#        src/app/view_controller.hpp
-#        src/app/market_controller.cpp
-#        src/app/market_controller.hpp
-#)
-#
-#qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
-
-
 # Find fontconfig for system font detection
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
 
-# Add elscratcher executable (Elements-based application)
-add_executable(elscratcher
-            src/elscratcher_main.cpp
-            src/app/elements/main_window.cpp
-            src/app/elements/main_window.hpp
-            src/app/elements/ui_builder.hpp
-            src/app/elements/ui_builder.cpp
-            src/app/elements/split_direction.hpp
-            src/app/elements/instrument_panel_element.hpp
-            src/app/elements/instrument_panel_element.cpp
-            src/app/elements/tab_bar.hpp
-            src/app/elements/tab_bar.cpp
-            src/app/elements/panel_node.hpp
-            src/app/elements/panel_node.cpp
+# Add xcockpit executable (Elements-based application)
+add_executable(xcockpit
+            src/main.cpp
+            src/app/main_window.cpp
+            src/app/main_window.hpp
+            src/app/ui_builder.hpp
+            src/app/ui_builder.cpp
+            src/app/split_direction.hpp
+            src/app/instrument_panel_element.hpp
+            src/app/instrument_panel_element.cpp
+            src/app/tab_bar.hpp
+            src/app/tab_bar.cpp
+            src/app/panel_node.hpp
+            src/app/panel_node.cpp
             src/config.hpp
             src/config.cpp
     )
-target_link_libraries(elscratcher PRIVATE elements core glaze::glaze Thorvg::thorvg ${CAIRO_LIBRARIES})
-target_include_directories(elscratcher PRIVATE ${CAIRO_INCLUDE_DIRS})
+target_link_libraries(xcockpit PRIVATE elements core glaze::glaze Thorvg::thorvg ${CAIRO_LIBRARIES})
+target_include_directories(xcockpit PRIVATE ${CAIRO_INCLUDE_DIRS})
 
-# Copy Elements font resources for elscratcher
+# Copy Elements font resources for xcockpit
 set(ELEMENTS_FONT_DIR "${elements_SOURCE_DIR}/resources/fonts")
-set(ELSCRATCHER_RESOURCES_DIR "$<TARGET_FILE_DIR:elscratcher>/resources")
+set(XCOCKPIT_RESOURCES_DIR "$<TARGET_FILE_DIR:xcockpit>/resources")
 
 add_custom_command(
-    TARGET elscratcher POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${ELSCRATCHER_RESOURCES_DIR}
+    TARGET xcockpit POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${XCOCKPIT_RESOURCES_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${ELEMENTS_FONT_DIR}/elements_basic.ttf"
         "${ELEMENTS_FONT_DIR}/OpenSans-Regular.ttf"
         "${ELEMENTS_FONT_DIR}/OpenSans-Light.ttf"
         "${ELEMENTS_FONT_DIR}/OpenSans-Bold.ttf"
         "${ELEMENTS_FONT_DIR}/Roboto-Regular.ttf"
-        ${ELSCRATCHER_RESOURCES_DIR}
-    COMMENT "Copying Elements font resources for elscratcher"
+        ${XCOCKPIT_RESOURCES_DIR}
+    COMMENT "Copying Elements font resources for xcockpit"
 )
 
 include_directories(
@@ -245,7 +197,7 @@ include_directories(
         src/connect
         src/core
         src/app
-        src/app/elements
+        src/app
         src/cockpit
         src/data
         src/data/entities
@@ -260,8 +212,6 @@ target_link_libraries(core PUBLIC SQLiteCpp)
 target_link_libraries(core PUBLIC glaze::glaze)
 target_link_libraries(core PUBLIC Thorvg::thorvg)
 
-#target_link_libraries(exscratcher PRIVATE core Qt6::Widgets Qt6::Svg)
-
 #include(GNUInstallDirs)
 #install(TARGETS exscratcher
 #    BUNDLE DESTINATION .
@@ -274,7 +224,6 @@ target_link_libraries(core PUBLIC Thorvg::thorvg)
 if(NOT ANDROID)
 
     CPMAddPackage("gh:catchorg/Catch2@3.5.4")
-    #find_package(Catch2 3 REQUIRED)
 
     # Function to create test executable for each test file
     function(add_test TEST_NAME TEST_FILE)
@@ -317,9 +266,9 @@ if(NOT ANDROID)
         target_include_directories(test_time_ruler PRIVATE ${CAIRO_INCLUDE_DIRS})
         target_compile_definitions(test_time_ruler PRIVATE
             "TIME_RULER_OUTPUT_DIR=\"${CMAKE_BINARY_DIR}/test_output/time_ruler\""
-            "ELSCRATCHER_RUNTIME_DIR=\"$<TARGET_FILE_DIR:elscratcher>\""
+            "ELSCRATCHER_RUNTIME_DIR=\"$<TARGET_FILE_DIR:xcockpit>\""
         )
-        add_dependencies(test_time_ruler elscratcher)  # ensures resources/ is populated
+        add_dependencies(test_time_ruler xcockpit)  # ensures resources/ is populated
     endif()
 
 endif()

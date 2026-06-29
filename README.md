@@ -1,22 +1,16 @@
-# The Exchange Scratchpad Project
+# X-Cockpit
 
-Scratch you own market strategy
+The next-generation open-source AI platform for exchange trading (temporarily distributed under Intellectual Property Reserve License)
 
-This is the general purpose standalone exchange client created by engineers for engineers.
+1. Highly modular and flexible cross-platform X-Cockpit UX provides an undistorted trading view with maximum information density for the trader.
 
-It aims to provide
+2. The Scratcher Assistant is planned as a separate engineering initiative to provide users with modern AI power for tasks not limited to trading, with the ambition to become your open-source AI companion helping with everyday tasks anywhere.
 
-1. Highly modular and flexible cross-platform GUI
+3. Universal trading API to run a third-party or implement and run your own automated trading strategy
 
-2. Clean trading widget gives an undistorted trading view with maximum information for a trader using The Trader Cockpit UX.
+4. Engine to test automated strategies on historical data
 
-3. The Scratcher Assistant is planned as a separate engineering initiative to provide users with modern AI power for every task not just limited by the trading related area and with the ambition to become your AI OpenSource friend helping with any everyday tasks anywhere.
-
-4. Universal trading API to run a third-party or implement and run your out automated trading starategy
-
-5. Engine to test automated strategies on historical data
-
-6. Extensible set of plugins to connect to different exchanges, crypto-exchanges at first
+5. Extensible set of plugins to connect to different exchanges, crypto-exchanges at first
 
 ## Contributing
 
@@ -24,6 +18,6 @@ It aims to provide
 
 ## License
 
-The Exchange Scrtchpad project is currently developed under The Intellectual Property Reserve License and is planned to later move to GPLv3 as the project has launched
+X-Cockpit project is currently developed under the Intellectual Property Reserve License and is planned to move to GPLv3 once the project launches
 
 - Read [LICENSE.md](LICENSE.md) 

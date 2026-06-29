@@ -1,3 +1,7 @@
+# XCockpit
+# Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+# Distributed under the Intellectual Property Reserve License, v2 (IPRL)
+
 # Helper invoked by ThorvgBuild.cmake at build time to (re)configure the meson build dir.
 # Handles three states:
 #   - fresh build dir              -> meson setup ${BUILD_DIR} ${SRC_DIR} <opts>

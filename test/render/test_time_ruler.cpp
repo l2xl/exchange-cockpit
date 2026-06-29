@@ -1,3 +1,7 @@
+// XCockpit
+// Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+// Distributed under the Intellectual Property Reserve License, v2 (IPRL)
+
 // Renders InstrumentContentPanel into a Cairo-backed RGBA buffer and writes PNGs to disk.
 // The PNGs are intended to be inspected visually (e.g. by Claude Code) to verify the
 // TimeRuler tick algorithm at a wide range of zoom levels and calendar anchors.

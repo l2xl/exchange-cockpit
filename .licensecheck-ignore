@@ -1,0 +1,10 @@
+# Paths excluded from license-header checking.
+# Lines ending with / match the entire directory tree.
+# Other lines match a path relative to the project root (prefix match).
+# Blank lines and lines starting with # are ignored.
+
+# CPM package manager — MIT License
+cmake/CPM.cmake
+
+# Vendored single-header libraries
+contrib/

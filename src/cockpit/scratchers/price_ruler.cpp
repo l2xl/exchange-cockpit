@@ -1,6 +1,6 @@
-// Scratcher project
-// Copyright (c) 2025-2026 l2xl (l2xl/at/proton.me)
-// Distributed under the Intellectual Property Reserve License (IPRL)
+// XCockpit
+// Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+// Distributed under the Intellectual Property Reserve License, v2 (IPRL)
 
 #include "price_ruler.hpp"
 

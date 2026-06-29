@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# XCockpit
+# Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+# Distributed under the Intellectual Property Reserve License, v2 (IPRL)
+
 """Build runner: configures and/or builds cmake project, captures output to build.log."""
 
 import argparse

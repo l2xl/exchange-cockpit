@@ -1,7 +1,6 @@
-// Scratcher project
-// Copyright (c) 2024 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// XCockpit
+// Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+// Distributed under the Intellectual Property Reserve License, v2 (IPRL)
 
 #include "exception"
 #include "config.hpp"
