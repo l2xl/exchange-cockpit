@@ -1,0 +1,15 @@
+accept: |
+  editing an approved item's text turns the gate red; after user-approved re-approval it is green again.
+active: true
+derived: false
+header: ''
+level: 1.6.1
+links:
+- INFRA-050: 7vNnFJzdR_7ViTNDCuiyWSlkWU6aB5s2T720GaAjqTI=
+normative: true
+ref: ''
+reviewed: null
+test: fixture-repo scripted state-transition test.
+text: |
+  The gate shall fail while any item is unreviewed or any link/reference is suspect, until a user-approved re-approval lands
+verify: test

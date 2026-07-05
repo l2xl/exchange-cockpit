@@ -1,0 +1,13 @@
+active: true
+derived: false
+header: ''
+level: 1.1.0
+links:
+- INFRA-041: 6ncgFTGZwsItqkl8X3DMn9_K1IJ5qLUxRsIZd7G0dQg=
+normative: true
+ref: ''
+reviewed: null
+test: organizational heading -- verified via its children's rolled-up status.
+text: |
+  Recursive requirements status
+verify: inspection

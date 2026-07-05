@@ -1,0 +1,15 @@
+accept: |
+  seeding a bybit include into src/datahub turns the gate red naming the offending file; the current tree passes.
+active: true
+derived: false
+header: ''
+level: 1.4.3
+links:
+- INFRA-048: rOWb0sFO5F-URIvv3lQO51EIFt2hLSTFoiBCY5IlNlc=
+normative: true
+ref: ''
+reviewed: null
+test: script unit test + one-time seeded verification.
+text: |
+  The gate ([INFRA-034]) shall include a layering audit failing when any `src/datahub` or `src/connect` source includes a `data/bybit` path (venue confinement per CONTRIBUTING layering)
+verify: test

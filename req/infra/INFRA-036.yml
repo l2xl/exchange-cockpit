@@ -1,0 +1,15 @@
+accept: |
+  after review, the full gate is green; the item YAML shows the reviewed fingerprint.
+active: true
+derived: false
+header: ''
+level: 1.5.1
+links:
+- INFRA-049: T8d7Rfpj_eU_Nk02eH-njUJeOr7TSh636k1a-tttQI8=
+normative: true
+ref: ''
+reviewed: null
+test: scripted round-trip in a tmp fixture repo.
+text: |
+  On explicit user approval a requirement shall be frozen and the freeze committed, recording a fingerprint of the item and its bound test files for the frozen-test check ([INFRA-035])
+verify: test

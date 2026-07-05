@@ -1,0 +1,19 @@
+accept: |
+  editing a referenced test after review stamping exits non-zero naming item and file; unreviewed items are ignored.
+active: true
+derived: false
+header: ''
+level: 1.4.2
+links:
+- INFRA-048: rOWb0sFO5F-URIvv3lQO51EIFt2hLSTFoiBCY5IlNlc=
+normative: true
+ref: ''
+references:
+- keyword: INFRA-035
+  path: scripts/tests/test_check_frozen_tests.py
+  type: file
+reviewed: null
+test: script unit test against a tmp fixture tree.
+text: |
+  A gate check shall verify that no test file bound to a reviewed (frozen) requirement has changed since the fingerprint recorded at review time, failing and naming the item and file on any difference. Live in the gate from the start — not deferred: every subsequent phase's freeze workflow depends on it catching silent edits to reviewed tests
+verify: test

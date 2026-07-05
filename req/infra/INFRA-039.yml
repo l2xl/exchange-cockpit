@@ -1,0 +1,16 @@
+accept: |
+  one commit containing both the edit and the re-stamp fails the gate; the same change split into two commits passes.
+active: true
+deferred: true
+derived: false
+header: ''
+level: 1.6.2
+links:
+- INFRA-050: 7vNnFJzdR_7ViTNDCuiyWSlkWU6aB5s2T720GaAjqTI=
+normative: true
+ref: ''
+reviewed: null
+test: script unit test on a fixture git history.
+text: |
+  (defer) The freeze check shall reject self-approving changes: a single commit may not both modify a frozen item or its bound test and re-approve it
+verify: test

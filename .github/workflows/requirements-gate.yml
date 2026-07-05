@@ -1,0 +1,90 @@
+name: Requirements Gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  requirements:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Single source of truth for requirements validation: ci/gate.sh bootstraps
+      # .venv-req and runs doorstop validation + the frozen-test and coverage checks.
+      - name: Validate requirements
+        id: validate
+        run: bash ci/gate.sh
+
+      - name: Install actionlint
+        run: |
+          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          sudo mv ./actionlint /usr/local/bin/
+
+      - name: Run requirements tooling tests (pytest)
+        run: .venv-req/bin/python -m pytest scripts/tests --junitxml=pytest-results.xml
+
+      - name: Install build dependencies
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libboost-dev libboost-context-dev libboost-system-dev libboost-url-dev \
+            libssl-dev libfontconfig-dev ninja-build pkg-config
+
+      - name: Restore build cache
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        uses: actions/cache@v4
+        with:
+          path: build-ci
+          key: build-ci-clang18-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: build-ci-clang18-
+
+      - name: Configure (CMake)
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        run: >
+          cmake -B build-ci -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+
+      - name: Build unit tests
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        run: cmake --build build-ci --target unit_tests --parallel
+
+      - name: Run unit tests (ctest, offline)
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        run: ctest --test-dir build-ci -LE live --output-on-failure --output-junit ctest-results.xml
+
+      - name: Compute recursive requirement status
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        run: >
+          .venv-req/bin/python scripts/req_status.py
+          --junit pytest-results.xml
+          --junit build-ci/ctest-results.xml
+          --out req_status.json
+
+      - name: Upload requirement status artifact
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-status
+          path: req_status.json
+
+      - name: Write job summary
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        run: .venv-req/bin/python ci/write_status_summary.py
+
+      - name: Publish requirements tree as a Check Run
+        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .venv-req/bin/python scripts/publish_check_run.py --status req_status.json

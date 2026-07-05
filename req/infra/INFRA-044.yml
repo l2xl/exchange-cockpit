@@ -1,0 +1,19 @@
+accept: ''
+active: true
+derived: false
+header: ''
+level: 1.1.2
+links:
+- INFRA-042: --divJ-kShJ9IibuTjSXM3FRuCe_OF_G5mKcPA2KZbU=
+normative: true
+ref: ''
+references:
+- keyword: INFRA-044
+  path: scripts/tests/test_req_status.py
+  type: file
+reviewed: null
+test: |
+  status-script unit tests over fixture trees exercising rollup, links, and containment.
+text: |
+  Status shall be recursively computed for every node in the requirements tree from its leaves upward, propagating through the cross-document parent links (component leaf -> PRODUCT case) and level-based containment (case -> feature -> branch), so a node's status is the aggregate of its children's status.
+verify: test

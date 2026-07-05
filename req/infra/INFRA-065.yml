@@ -1,0 +1,13 @@
+active: true
+derived: false
+header: ''
+level: 3.1.0
+links:
+- INFRA-064: VAEbtsY_TsJXQYlftKpaCt8MIGZzYNhw-hnt5g-j3Xc=
+normative: true
+ref: ''
+reviewed: null
+test: organizational heading -- verified via its children's rolled-up status.
+text: |
+  CI/CD running at GitHub
+verify: inspection
