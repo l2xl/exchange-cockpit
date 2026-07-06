@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libboost-dev libboost-context-dev libboost-system-dev libboost-url-dev \
+            clang-19 libboost-dev libboost-context-dev libboost-system-dev libboost-url-dev \
             libssl-dev libfontconfig-dev ninja-build pkg-config
 
       - name: Restore build cache
@@ -47,22 +47,35 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build-ci
-          key: build-ci-clang18-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
-          restore-keys: build-ci-clang18-
+          key: build-ci-clang19-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: build-ci-clang19-
 
       - name: Configure (CMake)
         if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
         run: >
           cmake -B build-ci -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19
 
       - name: Build unit tests
+        id: build
         if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
-        run: cmake --build build-ci --target unit_tests --parallel
+        run: |
+          set -o pipefail
+          cmake --build build-ci --target unit_tests --parallel 2>&1 | tee build-ci/build.log
 
       - name: Run unit tests (ctest, offline)
         if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
-        run: ctest --test-dir build-ci -LE live --output-on-failure --output-junit ctest-results.xml
+        run: |
+          set -o pipefail
+          ctest --test-dir build-ci -LE live --output-on-failure --output-junit ctest-results.xml 2>&1 | tee build-ci/ctest.log
+
+      - name: Report build/test failure as a Check Run
+        if: ${{ failure() && steps.build.outcome != 'skipped' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          .venv-req/bin/python ci/report_build_failure.py
+          build-ci/build.log build-ci/ctest.log
 
       - name: Compute recursive requirement status
         if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
