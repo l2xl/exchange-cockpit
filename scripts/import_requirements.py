@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# XCockpit
+# Copyright (c) 2026 l2xl (l2xl/at/proton.me)
+# Distributed under the Intellectual Property Reserve License, v2 (IPRL)
+
 """Decompose requirements_plan.md (sections 1-5) into the Doorstop tree under req/.
 
 PRODUCT receives one heading item per branch and per feature plus one normative
