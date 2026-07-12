@@ -75,6 +75,14 @@ jobs:
       - name: Unpack built tree
         run: tar --zstd -xf build-tree.tar.zst
 
+      # Fresh runner: only the shared libs the test binaries link against at
+      # runtime are needed here, not the toolchain used to build them.
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libboost-context-dev libboost-system-dev libboost-url-dev libssl-dev
+
       - name: Run unit tests (ctest, offline)
         run: |
           set -o pipefail

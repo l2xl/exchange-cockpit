@@ -47,6 +47,15 @@ def test_workflow_runs_offline_tests_against_built_tree():
     assert "-LE live" in test_steps
 
 
+def test_workflow_installs_runtime_libs_before_running_tests():
+    doc = _doc()
+    test_job_steps = doc["jobs"]["test"]["steps"]
+    test_index = next(i for i, s in enumerate(test_job_steps) if "ctest" in s.get("run", ""))
+    deps_index = next(i for i, s in enumerate(test_job_steps) if "apt-get install" in s.get("run", ""))
+    assert deps_index < test_index
+    assert "libboost-context-dev" in test_job_steps[deps_index]["run"]
+
+
 def test_workflow_runs_status_rollup_over_both_junit_reports():
     steps = _steps("requirements")
     assert any("pytest" in s.lower() for s in steps)
