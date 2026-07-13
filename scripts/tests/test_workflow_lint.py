@@ -12,10 +12,13 @@ import pytest
 from workflow_doc import WORKFLOW, load
 
 
-def test_workflow_has_independent_license_job_and_three_sequential_pipeline_jobs():
+def test_workflow_entry_checks_gate_the_sequential_pipeline_jobs():
     doc = load()
-    assert list(doc["jobs"]) == ["license", "build", "test", "requirements"]
+    assert list(doc["jobs"]) == ["license", "approval", "build", "test", "requirements"]
     assert "needs" not in doc["jobs"]["license"]
+    assert "needs" not in doc["jobs"]["approval"]
+    assert doc["jobs"]["build"]["needs"] == ["license", "approval"]
+    assert "needs.license.result == 'success'" in doc["jobs"]["build"]["if"]
     assert doc["jobs"]["test"]["needs"] == "build"
     assert doc["jobs"]["requirements"]["needs"] == ["build", "test"]
 
