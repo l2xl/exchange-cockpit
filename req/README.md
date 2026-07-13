@@ -70,7 +70,7 @@ A requirement lives under exactly one document for decomposition purposes — it
 
 ## Gate
 
-`ci/gate.sh` (locally) and `.github/workflows/requirements-gate.yml` (CI) run:
+`ci/gate.sh` (locally) and `.github/workflows/validate.yml` (CI) run:
 
 1. `doorstop -W -S --error-all` — tree validation, all warnings as errors; review/suspect checks stay off while the tree is adopted item by item (freeze semantics live in the scripts below). `GATE_STRICT=1 ci/gate.sh` runs the full `--error-all` once the whole tree is reviewed.
 2. `scripts/check_frozen_tests.py` — re-hashes reviewed references; Doorstop stamps SHAs at review but never re-verifies them itself.

@@ -1,7 +1,8 @@
 accept: ''
 active: true
 derived: false
-header: ''
+header: |
+  CI test run
 level: 3.1.2
 links:
 - INFRA-065: 5lOAMAqSjifgn7OrKn8gwaBjWvfNQd7KGN2XCERyT2Q=
@@ -9,11 +10,11 @@ normative: true
 ref: ''
 references:
 - keyword: INFRA-067
-  path: scripts/tests/test_workflow_lint.py
+  path: scripts/tests/test_infra_067_ci_tests.py
   type: file
 reviewed: null
 test: |
-  workflow-lint test asserting an offline test-run step (live tests excluded) after the build step.
+  workflow-lint test asserting the test job runs ctest against the build job's artifacts with live-labeled tests excluded.
 text: |
-  The CI pipeline shall run the offline test suite against the built artifacts after a successful build.
+  The CI pipeline shall run the project's automated test suite against the built artifacts after a successful build. Tests labeled `live` require live exchange connectivity and are excluded from the CI run.
 verify: test

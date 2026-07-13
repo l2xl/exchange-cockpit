@@ -79,7 +79,7 @@ Binding process rules:
 - **Test-first, then freeze.** For a requirement leaf, the covering Catch2 `TEST_CASE` is tagged with the leaf UID (`[DATA_MODEL-042]`) and bound via the leaf's `references:` before implementation. The user approves by running `doorstop review <UID>`, which fingerprints the item and its test files' SHAs.
 - **`doorstop review` / `doorstop clear` are user-only.** Review state is the record of the user's approval; no contributor or agent stamps or clears a review. The whole tree currently stands unreviewed (drafted, pending review).
 - **Frozen tests are immutable.** Editing a reviewed item's referenced test reddens the gate until the user runs a sanctioned `doorstop clear` + re-review.
-- **The gate must pass.** `ci/gate.sh` (and `.github/workflows/requirements-gate.yml`) run `doorstop --error-all` plus the frozen-test and coverage checks; they bite only on reviewed items.
+- **The gate must pass.** `ci/gate.sh` (and `.github/workflows/validate.yml`) run `doorstop --error-all` plus the frozen-test and coverage checks; they bite only on reviewed items.
 
 # The Exchange Scratchpad Components
 

@@ -4,7 +4,7 @@
 # Distributed under the Intellectual Property Reserve License, v2 (IPRL)
 
 # Requirements-driven CI gate: doorstop validation + frozen-test and coverage checks.
-# Build and test execution are explicit workflow steps (see requirements-gate.yml).
+# Build and test execution are explicit workflow steps (see validate.yml).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

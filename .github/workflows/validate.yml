@@ -1,4 +1,4 @@
-name: Requirements Gate
+name: Validate
 
 on:
   push:
@@ -8,6 +8,14 @@ permissions:
   contents: read
 
 jobs:
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check IPRL v2 license headers
+        run: python3 scripts/check_license.py --check
+
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -143,13 +151,6 @@ jobs:
           --junit pytest-results.xml
           --junit build-ci/ctest-results.xml
           --out req_status.json
-
-      - name: Upload requirement status artifact
-        if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: req-status
-          path: req_status.json
 
       - name: Write requirements report to the job summary
         if: ${{ !cancelled() && steps.validate.outcome == 'success' }}
