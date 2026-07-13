@@ -1,13 +1,16 @@
+accept: |
+  editing an approved item's text turns the gate red; after user-approved re-approval it is green again.
 active: true
 derived: false
-header: ''
-level: 1.6.0
+header: |
+  Suspect items block the gate
+level: 1.5.0
 links:
 - INFRA-041: 6ncgFTGZwsItqkl8X3DMn9_K1IJ5qLUxRsIZd7G0dQg=
 normative: true
 ref: ''
 reviewed: null
-test: organizational heading -- verified via its children's rolled-up status.
+test: fixture-repo scripted state-transition test.
 text: |
-  Suspect and unreviewed states block CI
-verify: inspection
+  The gate shall fail while any item is unreviewed or any link/reference is suspect, until a user-approved re-approval lands
+verify: test
