@@ -2,7 +2,8 @@ accept: |
   requirements-tree validation passes on fresh checkout; every branch prefix resolves to a document.
 active: true
 derived: false
-header: ''
+header: |
+  Requirements tree layout
 level: 1.2.1
 links:
 - INFRA-046: 0nQ45NxGefpl900p4mvoppGaAXHOIiS8YsUc-DL03xc=
