@@ -1,0 +1,7 @@
+header: Response delivery
+description: |
+  http_query shall asynchronously fetch an HTTPS URL and deliver the non-empty response body to the data handler without blocking the caller.
+parents: [CONNECT-010]
+order: 10
+tests: b9a2869115a5e22113d9b15b2db7f987f07a3b7d7d660b4d538e490c5570c5a2
+reviewed: 4fd9515026b858f4ccba1cfd438b4e57548cc5b9d9ec7fe55e4bdddd14918e2d

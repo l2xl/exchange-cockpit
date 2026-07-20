@@ -1,22 +1,7 @@
-accept: |
-  editing an approved item's text turns the gate red; after user-approved re-approval it is green again.
-active: true
-derived: false
-header: |
-  Suspect items block the gate
-level: 1.5.0
-links:
-- INFRA-041: S_eYhh2L-J41hsiMDbhBwsNFhAKq1xahlfNEmx_xddg=
-normative: true
-ref: ''
-references:
-- keyword: INFRA-050
-  path: scripts/tests/test_infra_050_suspect_block.py
-  sha: 27ed95b153b6103f462b6fdc240f9b049ae30468bd5894c2818428cabf9eca0b
-  type: file
-reviewed: vrwf7kmza7RY3-njD7N6ABPNrUPFtEjw8Zi6dfZ06UY=
-test: |
-  fixture-tree state-transition test -- editing a reviewed item or a linked parent raises unreviewed/suspect issues cleared only by user-approved re-approval; gate lint asserting strict mode enables both checks.
-text: |
-  The gate shall fail while any item is unreviewed or any link/reference is suspect, until a user-approved re-approval lands
-verify: test
+header: Unapproved changes block the gate
+description: |
+  The gate shall fail when a reviewed item's content or frozen test routine changed without a user-approved re-review, and in strict mode while any item in the tree is unreviewed
+parents: [INFRA-041]
+order: 50
+tests: a3a75924737e7f946cb7a5c6e3a9ca37c34bbe6377c932132ce5f56d032107f9
+reviewed: 0f661b228081cdac7db4df27452d6cc88488aa8da548b8aa5dee096e705a9c63
