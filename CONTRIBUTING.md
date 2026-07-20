@@ -71,6 +71,10 @@ The upper tier is **application-layer code** (e.g. `src/cockpit/`, `src/app/`) ‚
 - Any source addition, rename, removal, or directory restructuring must be reflected immediately in the corresponding CMake target. Build-system changes are part of the same changeset, not a follow-up.
 - See [BUILD.md](BUILD.md) for build invocation details.
 
+## Version control
+
+- Every commit must be GPG-signed. The repo sets `commit.gpgsign=true` locally against the maintainer's key; do not commit with `--no-gpg-sign` or otherwise bypass signing.
+
 # Requirements & the TDD gate
 
 Project requirements are tracked formally in a Doorstop inspired self implemented tree under `req/` (documents `PRODUCT ‚Üê CORE/DATA_MODEL/TRADER_HUD/APP/INFRA`); the item files are the single source of truth, decomposed branch by branch as each is scheduled. See [req/README.md](req/README.md) for the requirements-system design and operating guide.
