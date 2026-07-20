@@ -58,23 +58,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install LLVM apt repository (clang-23)
+        run: |
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 23
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang-19 libboost-dev libboost-context-dev libboost-system-dev libboost-url-dev \
+            libboost-dev libboost-context-dev libboost-system-dev libboost-url-dev \
             libssl-dev libfontconfig-dev ninja-build pkg-config
       - name: Restore build cache
         uses: actions/cache@v4
         with:
           path: build-ci
-          key: build-ci-clang19-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
-          restore-keys: build-ci-clang19-
+          key: build-ci-clang23-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: build-ci-clang23-
 
       - name: Configure (CMake)
         run: >
           cmake -B build-ci -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19
+          -DCMAKE_C_COMPILER=clang-23 -DCMAKE_CXX_COMPILER=clang++-23
 
       - name: Build unit tests
         run: |
