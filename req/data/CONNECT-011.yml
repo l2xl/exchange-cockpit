@@ -3,4 +3,5 @@ description: |
   http_query shall asynchronously fetch an HTTPS URL and deliver the non-empty response body to the data handler without blocking the caller.
 parents: [CONNECT-010]
 order: 10
-tests: ~
+tests: ac33ddfc5395849b952134e70ac17f6bda451233ff49d174ced175c6d27fd1b6
+reviewed: 5bff79203433b455855dbc570f766b837cd46ecab5d6523792ac1e69cc4c04ac

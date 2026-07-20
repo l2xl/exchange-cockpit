@@ -3,4 +3,5 @@ description: |
   Re-sent records matching a cached (sort key, id) pair shall be dropped while new tail records are appended and announced via a full-cache snapshot.
 parents: [DATAHUB-040]
 order: 30
-tests: ~
+tests: 8a1ddabfe9e8090d6aed65bb3ba2a2e43830f97ebbc1c2281cd458547c478e8a
+reviewed: e5d2059fe49f92fc24830316710a89feea01fbe4fa4c8eec060418057c25ebf3

@@ -3,4 +3,5 @@ description: |
   Optional entity fields shall round-trip through storage, with a present value preserved and an absent value staying absent after re-query.
 parents: [DATAHUB-010]
 order: 40
-tests: ~
+tests: eafc83b342ddac059bce7e215763e98929345f96a7a70fb598cfb341e748f5fc
+reviewed: cd59042e34a0536341827adf5659d80c39565038e24b12b346e65773e84b00bc

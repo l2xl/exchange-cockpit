@@ -3,4 +3,5 @@ description: |
   Incoming records sorting past the cache tail shall be appended and delivered to subscribers as an increment containing only the new records.
 parents: [DATAHUB-030]
 order: 20
-tests: ~
+tests: dcad63a703397daa65e54d412ccca806bada6d1864ee8473c4781e0924a5aca1
+reviewed: f12e6fb4d086135883b3a0b521080f3d6570206991e281b7d8d8b934619360f8

@@ -3,4 +3,5 @@ description: |
   Incoming records appended past the cache tail shall be announced with a full-cache snapshot rather than an increment.
 parents: [DATAHUB-040]
 order: 20
-tests: ~
+tests: 09f908ed419b162960113589b1bcdacd2075dea0896638d17fb73367b763314c
+reviewed: 2ba5be8668f9ed45c1c46b784e8ba3f1bb1e0a9087b045dba46690fe8b8d6210

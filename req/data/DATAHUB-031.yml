@@ -3,4 +3,5 @@ description: |
   Incoming records sorting between existing cache entries shall every one be inserted at its sorted position and announced to subscribers as a snapshot of the full reordered cache.
 parents: [DATAHUB-030]
 order: 10
-tests: ~
+tests: 7b0c22e7ef71ef2fca33ae82c709c49a722e41232761680f18b18eb0b76e68ad
+reviewed: d3134d4d66f92758aa8e52854a6abf2cdfb5e56a74078c41b9f4f4d182543ec2

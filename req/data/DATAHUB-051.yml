@@ -3,4 +3,5 @@ description: |
   The first accepted batch shall populate the cache in arrival order and be announced to subscribers as a snapshot.
 parents: [DATAHUB-050]
 order: 10
-tests: ~
+tests: cb689581453798e16bf0693ee1b6a4481598f433c128e453c2cb8d2ff83e9cd8
+reviewed: 273a8805e085d3ec8401bed1191d8bd079f5e3d1c410681daccca5d9041555c4

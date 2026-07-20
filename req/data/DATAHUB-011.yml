@@ -3,4 +3,5 @@ description: |
   A freshly constructed data_model shall create its backing table automatically and report an empty result set and a zero count before any record is inserted.
 parents: [DATAHUB-010]
 order: 10
-tests: ~
+tests: 26a3d3de060a725ff8b943e472d1d912aa93b6f7404eb957732eb9b1a2507666
+reviewed: e2f2dec83b958d4fc9bb663c43246895f8fc10ebb8ab418d70e0fb1690478b89

@@ -3,4 +3,5 @@ description: |
   Sequentially inserted records shall all be persisted and observable through both query and count.
 parents: [DATAHUB-010]
 order: 50
-tests: ~
+tests: df1f57bb8f45bbf91be93995e3276337601efa3e1b0dadc7a95550c528455a2e
+reviewed: 3ac5fb248af57e40aedb99fbda1617507fd5926741e942e3b97d5062b5d3c58d

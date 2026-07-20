@@ -3,4 +3,5 @@ description: |
   Records sharing a sort key value but differing in id shall all be kept in the cache.
 parents: [DATAHUB-030]
 order: 40
-tests: ~
+tests: d363fa3106d94a89046b5080e24f6af9604829e97bdb51a295735f6b1ae9c337
+reviewed: 8cc5f038c2fb48454fc617ade43af4811225ec2a61631ae77f85f6987359104a

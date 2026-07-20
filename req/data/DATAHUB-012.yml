@@ -3,4 +3,5 @@ description: |
   The data_model shall persist an entity parsed from exchange JSON and return it unchanged on a subsequent query, including fixed-point currency fields and absent optional fields.
 parents: [DATAHUB-010]
 order: 20
-tests: ~
+tests: 04772b43580f6ec494c36c16e2ba6bd64d52ed5a451755ed0e73d75e04bd91e0
+reviewed: 7b2ac9064c64b530a64106ce190857ff6dec07ae1f4f019cc8f8474e403896fd

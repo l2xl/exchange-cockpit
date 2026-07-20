@@ -3,4 +3,5 @@ description: |
   insert_or_replace shall report whether stored data actually changed: true on first insert or on a modified record, false when the incoming record equals the stored one, keeping a single row per primary key throughout.
 parents: [DATAHUB-010]
 order: 60
-tests: ~
+tests: 3206d6b21db5f137eaca90c7b821e6a743684c4e60ad7f1348ab6620430614a9
+reviewed: 9cc28cd7ae89eb5c5ab77e27eba4cdb6b8c871268f766c7ba4f5822ff3fc2534

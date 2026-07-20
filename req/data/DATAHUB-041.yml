@@ -3,4 +3,5 @@ description: |
   Incoming records merged into the middle of the cache shall be announced to subscribers as a snapshot of the full sorted cache.
 parents: [DATAHUB-040]
 order: 10
-tests: ~
+tests: ce650213fab573457583d40fc69d67c97ca0e82180d9a1806e219b43f619796b
+reviewed: 47f6d4c754a0756e5dd143c812eb1be217be80d8f4fcaefa1e65215951870678

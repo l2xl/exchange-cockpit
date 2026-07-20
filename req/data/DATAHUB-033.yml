@@ -3,4 +3,5 @@ description: |
   Re-sent records matching a cached (sort key, id) pair shall be dropped so only genuinely new records reach the cache and subscribers.
 parents: [DATAHUB-030]
 order: 30
-tests: ~
+tests: dfbdf963267fbe765c274fe66cf3482097ad66946b2a9cefd2f3d422c93ea2ca
+reviewed: 7f2e209ef278dccd1da9ea294ae9e41af40d0eb5987cc190d1d65fb1ebf08406

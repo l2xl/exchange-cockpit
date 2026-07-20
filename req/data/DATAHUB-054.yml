@@ -3,4 +3,5 @@ description: |
   A batch mixing new and existing keys shall update the matching entries in place and append the new ones, all announced in a single snapshot notification.
 parents: [DATAHUB-050]
 order: 40
-tests: ~
+tests: fae668ecddc1c0187c50d36786e538bf8d7c2db2c46cd53bd4b92acb289bf180
+reviewed: dc365e890d45d118f65994e5ad04945dd1689eb34bc587afb011f162baf073ae

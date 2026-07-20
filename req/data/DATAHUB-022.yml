@@ -3,4 +3,5 @@ description: |
   The currency wire codec shall map an empty decimal string to a zero value so a single unset field never fails parsing of the whole entity.
 parents: [DATAHUB-020]
 order: 20
-tests: ~
+tests: 48606759c8b425c3888e336286daad7f92dc1a6d780ea4aff318e3e548d3e9b2
+reviewed: f892614fa748ab178dee297da4f4a6e79dd062cb98f664a99fb2da62765aa7b8

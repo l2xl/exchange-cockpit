@@ -3,4 +3,5 @@ description: |
   Records with previously unseen keys shall be appended to the cache and announced via a full-cache snapshot.
 parents: [DATAHUB-050]
 order: 20
-tests: ~
+tests: 8996729f7b308bb48bc626dac066c12e1cd22584a079c16918f7ad97fab42e44
+reviewed: af87239c01cd8209d572f00a007e8550d4e5f1a6dd2a9aa0cfc32b6912afa92f
